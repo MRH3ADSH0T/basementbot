@@ -18,13 +18,11 @@ from os import system
 # time
 from datetime import datetime as datet
 from timeit import default_timer as dt
-from numpy import deprecate
 from pytz import timezone
 # misc.
 import random as rand
 from hashlib import sha256 as sha
 from io import StringIO
-from re import match
 
 #from base64 import b64encode
 #from tzlocal import get_localzone as glz

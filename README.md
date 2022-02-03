@@ -7,5 +7,9 @@ Uses JSON to store client data when offline.
 
 ## Requirements
 
+### Files
 Add `./logs/` directory. Add `./blw.txt` file with a newline-seperated list of blacklisted words.
 Add `./env` file containing `bottoken=<BOT'S TOKEN>`.
+
+### Python - pip
+Run `python3.9 -m pip install discord.py discord-py-slash-command pytz dotenv` to install python packages.
