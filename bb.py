@@ -755,7 +755,7 @@ class slashCmds:
         ]
     )
     async def _dm(ctx:SlashContext, member:discord.Member, message:str):
-        if client.Data[ctx.author_id]["permLvl"]>0: # mod or above
+        try:
             _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
             # main command execution
             await member.send(f"Dear, {member.display_name},\n\n{message}\n\n\t\tSincerely, The Basement Staff Team")
@@ -763,9 +763,10 @@ class slashCmds:
             await client.modLog.send(f"```{_dt} - {ctx.author.display_name} messaged {member.display_name}:\n\"{message}\"```")
             # report success.
             await ctx.send("Success!")
-
-        else:
-            await ctx.send(f"{ctx.author.mention}, you do not have sufficient permissions.")
+        
+        except discord.errors.Forbidden:
+            await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
+            return
 
 
     @slash.slash(
@@ -950,8 +951,8 @@ class slashCmds:
         if message:
             try:
                 await member.send(f"Dear, {member.display_name},\n\n{message}\n\n\t\tSincerely, The Basement Staff Team")
-            except:
-                await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have direct messages off, or maybe Josh's bot is broken...")
+            except discord.errors.Forbidden:
+                await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
                 return
 
         await ctx.send("Success!")
