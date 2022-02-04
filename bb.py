@@ -1019,7 +1019,7 @@ class slashCmds:
         with open(f"{client.dir}/logs/{ctx.channel_id}.txt","a") as f:
             print(f"{_dt} - {ctx.author.display_name} ({ctx.author.name}) bulk deleted {amount} messages with contains=\"{contains}\", user=\"{ctx.author.name}#{ctx.author.discriminator}\" params",file=f)
 
-        await client.modLog.send(f"```{_dt} {ctx.author.name} deleted {amount} messages from {ctx.}```")
+        await client.modLog.send(f"```{_dt} {ctx.author.name} deleted {amount} messages from #{ctx.channel.name}```")
         await ctx.send(f"Successfully deleted {amount} messages.")
 
 
