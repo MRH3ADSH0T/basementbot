@@ -8,7 +8,7 @@ Uses JSON to store client data when offline.
 ## Requirements
 
 ### Files
-Add `./logs/` directory. Add `./blw.txt` file with a newline-seperated list of blacklisted words.
+Add `./logs/` directory. 
 Add `./env` file containing `bottoken=<BOT'S TOKEN>`.
 
 ### Python - pip
