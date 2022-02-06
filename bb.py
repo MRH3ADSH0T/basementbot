@@ -1469,7 +1469,7 @@ class slashCmds:
             else:
                 await ctx.send("That word isn't in the blacklist!")
         elif list:
-            listed=", ".join(client.Data["blw"])
+            listed=", ".join(f"||{i}||" for i in client.Data["blw"])
             await client.modLog.send(f"{ctx.author.mention} here is a list of very naughty words:\n{listed}")
         else:
             await ctx.send(f"Seriously? You gotta add an option, bud...")
