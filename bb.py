@@ -160,10 +160,20 @@ def parseDesciptions(cmd:str=None):
 
     return out
 
+def scanMessage(phrase:str, string:str) -> bool:
+    phrase=phrase.lower()
+    string=string.lower()
+    if phrase in string.replace(" ","") or phrase in string.replace("‎","") or phrase in string.replace(",","") or phrase in string.replace(".",""):
+        return string.replace(phrase, "||f{phrase}||")
+    elif f" {phrase} " in string or f" {phrase}" in string or f"{phrase} " in string or phrase==string:
+        return string.replace(phrase, "||f{phrase}||")
+    else:
+        return False
+
 # Grab our json/dictionary
 client.Data=load()
 
-################################################################
+####################################################################################################
 
 @client.event
 async def on_ready(): # do all this on startup...
@@ -421,16 +431,16 @@ async def on_message(message:discord.Message):
 
     #################################### blacklisted word check ####################################
 
-    for word in msg.lower().split(" "):
-        # ensures that the $blw command will run, otherwise, treat the message as swearing
-        if word in client.Data["blw"] and not msg.startswith("$blw") and client.Data[auth.id]["permLvl"]>1:
+    for word in client.Data["blw"]:
+        notClean=scanMessage(word, msg)
+        if notClean:
             await message.delete()
-            await client.botLog.send(f"`{_dt} {auth.display_name}'s message contained `||{word}||` in `{message.channel.mention}")
-
+            await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted \"{notClean}\"")
+    
     ################################################################################################
 
     if msg.startswith("$") and msg.split(" ")[0][1:] in ALIASES:
-        message.reply(f"`{msg.split(' ')[0]}` is deprecated. Please use the equivalent slash command.")
+        await message.reply(f"`{msg.split(' ')[0]}` is deprecated. Please use the equivalent slash command.")
 
     # create command needs to be before the permission assignment check below
     if msg.startswith("$create "):
@@ -1440,7 +1450,6 @@ async def _test(ctx:SlashContext):
     fname="_warn"
     print(getattr(slashCmds,fname).__doc__)
     await ctx.send(f"Sucessfully tested, {ctx.author.mention}!")
-
 
 
 print(f"Loaded all functions in {dt()-st}s!")
