@@ -268,6 +268,9 @@ async def on_ready(): # do all this on startup...
                 cd=f"{60-now.second}"
             await client.basementC.send(cd)
 
+        if now.second==0 and not now.minute%30:
+            save(client.Data)
+
         await aio.sleep(1)
 
 
@@ -436,7 +439,7 @@ async def on_message(message:discord.Message):
         if notClean:
             await message.delete()
             await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted \"{notClean}\"")
-    
+
     ################################################################################################
 
     if msg.startswith("$") and msg.split(" ")[0][1:] in ALIASES:
@@ -1413,6 +1416,64 @@ class slashCmds:
         "Will return the message description associated with each command."
         answer=parseDesciptions(command)
         await ctx.send(f"{answer}")
+
+    @slash.slash(
+        name="blacklist",
+        description="All blacklisted word operations stem from this command.",
+        guild_ids=GUILDS,
+        default_permission=False,
+        options=[
+            create_option(
+                name="add",
+                description="Will add the word you enter into the blacklisted words list.",
+                option_type=3, #str
+                required=False
+            ),
+            create_option(
+                name="remove",
+                description="If the word exists in the list, it will be removed.",
+                option_type=3, #str
+                required=False
+            ),
+            create_option(
+                name="list",
+                description="Will print out a list of the blacklisted words in #mod-logging.",
+                option_type=5, #bool
+                required=False
+            )
+        ]
+    )
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=STAFF_ID,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _blw(ctx:SlashContext, add:str=None, remove:str=None, list:str=None):
+        "All blacklisted word operations stem from this command."
+        if add:
+            word=add.lower()
+            if word not in client.Data["blw"]:
+                client.Data["blw"]+=[word]
+                await ctx.send("Successfully added a new word to the blacklist.")
+            else:
+                await ctx.send("That word already exists in the list!")
+        elif remove:
+            word=remove.lower()
+            if word in client.Data["blw"]:
+                client.Data["blw"].remove(word)
+                await ctx.send("Successfully deleted that word from the blacklist.")
+            else:
+                await ctx.send("That word isn't in the blacklist!")
+        elif list:
+            listed=", ".join(client.Data["blw"])
+            await client.modLog.send(f"{ctx.author.mention} here is a list of very naughty words:\n{listed}")
+        else:
+            await ctx.send(f"Seriously? You gotta add an option, bud...")
 
 
 
