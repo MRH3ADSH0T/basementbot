@@ -163,10 +163,10 @@ def parseDesciptions(cmd:str=None):
 def scanMessage(phrase:str, string:str) -> bool:
     phrase=phrase.lower()
     string=string.lower()
-    if phrase in string.replace(" ","") or phrase in string.replace("‎","") or phrase in string.replace(",","") or phrase in string.replace(".",""):
-        return string.replace(phrase, "||f{phrase}||")
+    if (phrase in string.replace(" ","") and not phrase in string) or (phrase in string.replace("‎","") and not phrase in string) or (phrase in string.replace(",","") and not phrase in string) or (phrase in string.replace(".","") and not phrase in string):
+        return string.replace(phrase, f"||{phrase}||")
     elif f" {phrase} " in string or f" {phrase}" in string or f"{phrase} " in string or phrase==string:
-        return string.replace(phrase, "||f{phrase}||")
+        return string.replace(phrase, f"||{phrase}||")
     else:
         return False
 
