@@ -163,9 +163,13 @@ def parseDesciptions(cmd:str=None):
 def scanMessage(phrase:str, string:str) -> bool:
     phrase=phrase.lower()
     string=string.lower()
-    if (phrase in string.replace(" ","") and not phrase in string) or (phrase in string.replace("‎","") and not phrase in string) or (phrase in string.replace(",","") and not phrase in string) or (phrase in string.replace(".","") and not phrase in string):
-        return string.replace(phrase, f"||{phrase}||")
-    elif f" {phrase} " in string or f" {phrase}" in string or f"{phrase} " in string or phrase==string:
+    chars=[".",",","-","‎"]
+    for char in chars:
+        if (phrase in string.replace(char,"").split(" ")):# and not phrase in string:
+            return string.replace(char,"").replace(phrase, f"||{phrase}||")
+    if phrase in string.replace(" ","") and not phrase in string:
+        return string.replace(" ","").replace(phrase, f"||{phrase}||")
+    elif f" {phrase} " in string or phrase==string:
         return string.replace(phrase, f"||{phrase}||")
     else:
         return False
@@ -1471,6 +1475,7 @@ class slashCmds:
         elif list:
             listed=", ".join(f"||{i}||" for i in client.Data["blw"])
             await client.modLog.send(f"{ctx.author.mention} here is a list of very naughty words:\n{listed}")
+            await ctx.send(f"Success!")
         else:
             await ctx.send(f"Seriously? You gotta add an option, bud...")
 
