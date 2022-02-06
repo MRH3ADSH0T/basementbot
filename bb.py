@@ -248,8 +248,7 @@ async def on_ready(): # do all this on startup...
         if now.second==59 and now.minute==59 and now.hour==23 and now.day!=31 and now.month!=12: # will say "Goodnight, y'all" EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
 
-        if now.minute==0 and 0<now.second<=10: # every hour (within a 10s error range), essentially execute "$log" and "$save"
-            save(client.Data)
+        if now.minute==0 and 0<now.second<=10: # every hour (within a 10s error range), essentially execute "$log"
             online,o,dt_str="",0,now.strftime("%m/%d/%Y %H:%M:%S")
             for kiddie in client.basement.members:
                 if kiddie.raw_status!="offline" and kiddie.bot==False:
