@@ -1,4 +1,4 @@
-# The Basement Bot ROUTINE TASK HALF - ft. bullshit
+# The Basement Bot
 # Documentation:    https://discordpy.readthedocs.io/en/latest/api.html
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
@@ -149,11 +149,11 @@ async def nickToMember(nick:str, author:discord.Member):
 def verify(i:str):
     return i.strip() and not i.strip().startswith("#") and len(i.strip())-1
 
-def parseDesciptions(cmd:str=None):
-    "this was a bitch to code"
+def parseDesciptions(cmd:str=None)->dict:
+    "this was a ***** to code"
     if not cmd: cmds=["/"+cmd[1:] for cmd in dir(slashCmds) if not cmd.startswith("__")]
     else: cmds=[cmd]
-    out=""
+    out={}
 
     with open(f"{client.dir}/bb.py",'r') as f:
         fread=[i.strip() for i in f.read().split("class slashCmds:")[-1].split('\n') if verify(i)]
@@ -161,8 +161,10 @@ def parseDesciptions(cmd:str=None):
     for command in cmds:
         for idx,line in enumerate(fread):
             if line.startswith("name=") and fread[idx-1]=="@slash.slash(" and line[6:-2]==command[1:]:
-                name,desc=command[1:], fread[idx+1][13:-2]
-                out+=f"\n{name} - {desc}\n"
+                name=command[1:]
+                if fread[idx+1].startswith("description=f\""): desc=fread[idx+1][14:-2]
+                else: desc=fread[idx+1][13:-2]
+                out[name]=desc
 
     return out
 
@@ -376,7 +378,7 @@ async def on_message_delete(message):
         await client.counting.send(f"{auth.name}'s message \"`{message.clean_content}`\" was deleted! The current number is `{client.Data['counting']}`")
 
 @client.event
-async def on_message_edit(before,after):
+async def on_message_edit(before:discord.Message,after:discord.Message):
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # get current time/date
     auth=before.author # author
     Bclean=before.clean_content # before
@@ -387,6 +389,13 @@ async def on_message_edit(before,after):
 
     if before.channel==client.counting and Bclean.isdigit(): # counting alert
         await before.reply(f"{auth.name} changed their message \"`{Bclean}`\")! The current number is `{client.Data['counting']}`",mention_author=False)
+    
+    # Profanity filter
+    if profanity_filter.is_profane(Aclean):
+        filtered=[]
+        for word in Aclean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
+        await after.delete()
+        await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted in {after.channel.mention}: \"{' '.join(filtered)}\"")
 
 @client.event
 async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
@@ -400,7 +409,7 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
 
     elif emoji==client.get_emoji(935571232173199380):
         channel:discord.TextChannel=client.get_channel(payload.channel_id)
-        await channel.send("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a crap? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
+        await channel.send("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a ****? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
 
 @client.event
 async def on_message(message:discord.Message):
@@ -451,10 +460,9 @@ async def on_message(message:discord.Message):
 
     if profanity_filter.is_profane(clean):
         filtered=[]
-        for word in clean.split(" "):
-            filtered+=[f"||{word}||" if profanity_filter.censor(word)=="."*len(word) else word]
+        for word in clean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
         await message.delete()
-        await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted: \"{' '.join(filtered)}\"")
+        await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted in {message.channel.mention}: \"{' '.join(filtered)}\"")
 
     ################################################################################################
 
@@ -494,7 +502,7 @@ async def on_message(message:discord.Message):
         await message.add_reaction("👋")
 
     #if msg.lower()=="based" or (msg.startswith("<:based:935571232173199380>") and msg.endswith("<:based:935571232173199380>")):
-    #    await message.reply("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a crap? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
+    #    await message.reply("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a ****? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
 
     # +++++ Josh DMs +++++
     if message.channel.id==875194263267319808:
@@ -1379,7 +1387,7 @@ class slashCmds:
             ),
             create_option(
                 name="new_value",
-                description="The new value for data_type. Do not screw this up or Josh will be mad.",
+                description="The new value for data_type. Do not ***** this up or Josh will be mad.",
                 option_type=3,
                 required=True
             )
@@ -1432,8 +1440,15 @@ class slashCmds:
     )
     async def _help(ctx:SlashContext, command:str=None):
         "Will return the message description associated with each command."
-        answer=parseDesciptions(command)
-        await ctx.send(f"{answer}")
+        embed=discord.Embed(
+            title="Help command",
+            description="Each command and it's usage.",
+            color=discord.Color(0xff0000)
+        )
+        help=parseDesciptions(command)
+        #map(embed.add_field,help,help.values())
+        for cmd in help: embed.add_field(name=f"/{cmd}",value=help[cmd],inline=False)
+        await ctx.send(embed=embed)
 
     @slash.slash(
         name="blacklist",
@@ -1532,5 +1547,59 @@ async def _test(ctx:SlashContext):
     await ctx.send(f"Sucessfully tested, {ctx.author.mention}!")
 
 
+@slash.slash(
+    name="testembed",
+    description="Testing command for Disocrd embeds.",
+    guild_ids=GUILDS,
+    default_permission=False
+)
+@slash.permission(
+    guild_id=GUILDS[0],
+    permissions=[
+        create_permission(
+            id=STAFF_ID,
+            id_type=1,
+            permission=True
+        ),
+        create_permission(
+            id=888234155391975435,
+            id_type=1,
+            permission=True
+        )
+    ]
+)
+async def _embtest(ctx:SlashContext):
+    "Testing command for Disocrd embeds."
+    embed=discord.Embed(
+        title="Test title",
+        description="a description",
+        color=discord.Color.blue()
+    )
+    embed.set_author(name="This is the author")
+    embed.add_field(
+        name="test field 1",
+        value="```test field value 1```",
+        inline=True
+    )
+    embed.add_field(
+        name="test field 2",
+        value="```test field value 2```",
+        inline=True
+    )
+    embed.add_field(name="\u200b",value="\u200b",inline=False)
+    embed.add_field(
+        name="test field 3",
+        value="```test field value 3```",
+        inline=True
+    )
+    embed.add_field(
+        name="test field 4",
+        value="```test field value 4```",
+        inline=True
+    )
+    #embed.set_image(url="https://cdn.discordapp.com/icons/858065227722522644/e708a44944ffd06fd9745d495f9c16c9.webp")
+    await ctx.send(embed=embed)
+
 print(f"Loaded all functions in {dt()-st}s!")
 client.run(token)
+
