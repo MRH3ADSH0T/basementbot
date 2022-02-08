@@ -3,6 +3,7 @@
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
 # discord-oriented tools
+from click import option
 import discord
 from discord.ext import commands
 import json
@@ -65,13 +66,15 @@ DEPRECATED=[
     "warn",
     "recent",
     "count",
-    "dm"
+    "dm",
+    "sha"
 ]
 
 ALIASES=DEPRECATED+[
     "clear",
     "snowflake",
-    "statistics"
+    "statistics",
+    "hash"
 ]
 
 st=dt() # start of all functions
@@ -452,12 +455,6 @@ async def on_message(message:discord.Message):
 
     #################################### blacklisted word check ####################################
 
-    #for word in client.Data["blw"]+client.Data["blwEdit"]:
-    #   notClean=scanMessage(word, msg)
-    #   if notClean:
-    #       await message.delete()
-    #       await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted \"{notClean}\"")
-
     if profanity_filter.is_profane(clean):
         filtered=[]
         for word in clean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
@@ -468,6 +465,7 @@ async def on_message(message:discord.Message):
 
     if msg.startswith("$") and msg.split(" ")[0][1:] in ALIASES:
         await message.reply(f"`{msg.split(' ')[0]}` is deprecated. Please use the equivalent slash command.")
+        return
 
     # create command needs to be before the permission assignment check below
     if msg.startswith("$create "):
@@ -586,42 +584,21 @@ async def on_message(message:discord.Message):
 
 
     # +++++ word-assoc +++++
-    """
-    if message.channel==client.wrdAssocC:
-        countSpaces=lambda s:len([i for i in s if i==' '])
-        if not msg.startswith("> ") and countSpaces(msg)>=3:
-            await message.delete()
-            await client.wrdAssocC.send(f"> {auth.display_name}, I detected that you \
-may have used a sentence. Please read the rules in this channel's description \
-or contact __Josh S.__ if you believe this is an error.")
-        elif auth.id==client.Data["lastWAAuth"] and not msg.startswith("> "):
-            await message.delete()
-            await client.wrdAssocC.send(f"> {auth.display_name}, you have already sent a message! Please wait your turn.")
-        else: client.Data["lastWAAuth"]=auth.id
-    """
+    
+    #    if message.channel==client.wrdAssocC:
+    #        countSpaces=lambda s:len([i for i in s if i==' '])
+    #        if not msg.startswith("> ") and countSpaces(msg)>=3:
+    #            await message.delete()
+    #            await client.wrdAssocC.send(f"> {auth.display_name}, I detected that you \
+    #may have used a sentence. Please read the rules in this channel's description \
+    #or contact __Josh S.__ if you believe this is an error.")
+    #        elif auth.id==client.Data["lastWAAuth"] and not msg.startswith("> "):
+    #            await message.delete()
+    #            await client.wrdAssocC.send(f"> {auth.display_name}, you have already sent a message! Please wait your turn.")
+    #        else: client.Data["lastWAAuth"]=auth.id
+    
 
     # +++++ commands +++++
-
-    #elif msg=="$test": # verify bot is working
-    #    await message.channel.send(f"Sucessfully tested, {auth.mention}!")
-    #    print(f"{_dt} responed to {auth.name} via $test command.")
-    #    daigNostHeader="="*8+" DIAGNOSTICS REPORT "+"="*8
-    #    report="\n"+daigNostHeader+f"""\nMain data size: {getsizeof(client.Data)}b"""
-    #    print(report)
-
-    #elif msg.startswith("$test ") and message.channel==client.testC:
-    #    target=" ".join(msg.split("$test ")[1:])
-    #    kiddie=await nickToMember(target, auth)
-    #    if kiddie:
-    #        await message.channel.send(f"I found this kid, {kiddie.name}#{kiddie.discriminator}")
-
-    if msg.startswith("$help"):
-        if permL==0: # kiddie help
-            if len(clean.split("$"))-1==1: # checks whether the person is asking for general or specific help.
-                await message.channel.send(f"{kiddiehelp}")
-            else: pass # specific command help.
-        elif permL==1: pass # moderator help
-        return
 
      ######## THE NEXT 2 COMMANDS ARE FOR LEGAL REASONS ########
 
@@ -656,49 +633,6 @@ or contact __Josh S.__ if you believe this is an error.")
         return
 
     ############################################################
-
-    elif msg.startswith("$sha"): # sha256 algo
-        text=clean[len("$sha "):] # cleverly extract text
-        encrypted=sha(text.encode()).hexdigest() # encrypted text
-
-        await message.channel.send(f"```fix\n{encrypted}\n```") # send the message
-        return
-
-    elif msg.startswith("$blw "):
-        # this command handles swear words, etc. it has 3 sub commands.
-        # add [words] - adds a space-seperated list of words to the list
-        # del [word] - removes the word from the list
-        # list - directly messages the issuer of the command a list of the current blacklisted words
-
-        if client.Data[auth.id]["permLvl"]>1: # admins only
-
-            if msg[len("$blw "):3+len("$blw ")]=="add":
-                await message.delete()
-
-                wordlist=msg.lower().split(" ")[2:] # a list of words except for "$blw add"
-                words=[word for word in wordlist if word not in client.Data["blw"]] # ensures no duplicates are added
-                client.Data["blw"]+=words
-
-                await client.modLog.send(f"```{_dt} {auth.display_name} added {len(words)} to the blacklisted words. You can view them by using \"$blw list\"```")
-
-            elif msg[len("$blw "):3+len("$blw ")]=="del":
-                await message.delete()
-
-                wordlist=msg.lower().split(" ")[2:] # retrieves space-sep. list of words
-                words=[word for word in wordlist if word in client.Data["blw"]]
-                for word in words: client.Data["blw"].remove(word)
-
-                await client.modLog.send(f"```{_dt} {auth.display_name} removed {len(words)} from the blacklisted words. To verify changes, use \"$blw list\"```")
-
-            elif msg[-4:]=="list":
-                list_="\n - "+"\n - ".join(word for word in client.Data["blw"])
-                await auth.send(f"Per your request, here is the list of naughty words that you cannot say in **{client.basement.name}**:```{list_}```")
-
-            else:
-                await client.modLog.send(f"{auth.mention}, I didn't understand the command you ran. I accept 3 arguments: `add [words]`, `del [words]`, and `list`.")
-
-        else: await message.channel.send(f"{auth.mention}, you really don't want me to give you or anyone else permission to use this command...")
-        return
 
     elif msg.startswith("$inj") and message.channel==client.breakbbC:
         await client.breakbbC.send(f"Sorry, {auth.display_name}, but this command is currently disabled.")
@@ -746,7 +680,6 @@ class slashCmds:
         jd=client.Data[member.id]["joinDate"]
         await ctx.send(f"{member.display_name} joined {ctx.guild.name} on `{jd}`")
 
-
     @slash.slash(
         name="howmanylines",
         description=f"How many lines long is BasementBot?",
@@ -757,7 +690,6 @@ class slashCmds:
         size=round(getsize("bb.py")/1024,2)
 
         await ctx.send(f"{client.user.mention} is made up of `{lines}` lines of code and is `{size}` kilobytes large.\nPlease visit <https://bot.thebasement.group> for more data!")
-
 
     @slash.slash(
         name="dm",
@@ -805,7 +737,6 @@ class slashCmds:
             await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
             return
 
-
     @slash.slash(
         name="count",
         description="Sets the count to a specific number.",
@@ -838,7 +769,6 @@ class slashCmds:
         await client.counting.send(f"{ctx.author.display_name} changed the count to `{new_number}`!\nAnyone except {ctx.author.display_name} can type!")
         await ctx.send(f"Success!")
 
-
     @slash.slash(
         name="disconnect",
         description="Disconnects BasementBot.",
@@ -863,7 +793,6 @@ class slashCmds:
         await ctx.send(f"Disconnected.")
         print(f"{_dt} {ctx.author.name} initiated disconnect.")
         await client.close()
-
 
     @slash.slash(
         name="poll",
@@ -899,7 +828,6 @@ class slashCmds:
         await polled.add_reaction(client.get_emoji(858556294743064576)) # downvote
 
         await ctx.send(f"Success!")
-
 
     @slash.slash(
         name="recent",
@@ -942,7 +870,6 @@ class slashCmds:
         await client.modLog.send(file=discord.File(f"{client.dir}/logs/temp.txt"))
 
         await ctx.send(f"{ctx.author.mention}, the requested channel(s)'s recent messages have been sent to {client.modLog.mention}!")
-
 
     @slash.slash(
         name="warn",
@@ -993,7 +920,6 @@ class slashCmds:
                 return
 
         await ctx.send("Success!")
-
 
     @slash.slash(
         name="clear",
@@ -1059,7 +985,6 @@ class slashCmds:
         await client.modLog.send(f"```{_dt} {ctx.author.name} deleted {amount} messages from #{ctx.channel.name}```")
         await ctx.send(f"Successfully deleted {amount} messages.")
 
-
     @slash.slash(
         name="msgs",
         description="Get you or your friends basement message count!",
@@ -1077,7 +1002,6 @@ class slashCmds:
         if not user: user=ctx.author
         msgC=client.Data[user.id]["msgCount"]
         await ctx.send(f"{user.display_name}'s message count: {msgC}")
-
 
     @slash.slash(
         name="log",
@@ -1105,7 +1029,6 @@ class slashCmds:
 
         await client.modLog.send(f"{o} online members at `{dt_str}`:```\n{online}```") # send to #modlogging
         await ctx.send(f"Success!")
-
 
     @slash.slash(
         name="retrieve",
@@ -1181,7 +1104,6 @@ class slashCmds:
 
         await ctx.send(f"The requested files were uploaded to {client.modLog.mention}.")
 
-
     @slash.slash(
         name="create",
         description="Creates a new data entry for the specified member.",
@@ -1219,7 +1141,6 @@ class slashCmds:
         await ctx.send(f"Sucessfully created memeber {member.display_name}, {member.mention}!")
         await client.modLog.send(f"{member.name}'s new data:```py\n\"{member.id}\": {client.Data[member.id]}\n```")
 
-
     @slash.slash(
         name="announce",
         description="Send an announcemnt that pings everybody in #announcements.",
@@ -1249,7 +1170,6 @@ class slashCmds:
         await client.announcementC.send(f"{client.kRole.mention}, {message}") # sends the announcement to the #announcements channel.... mention kiddie role
         await ctx.send(f"Success!")
 
-
     @slash.slash(
         name="statistics",
         description="The #counting statistics for you or another member.",
@@ -1275,7 +1195,6 @@ class slashCmds:
         stats=f"Count Fails: `{fails}`\nHighest number: `{high}`, which is `{round(percent,2)}%` of the highscore!"
 
         await ctx.send(f"Here are the {client.counting.mention} statistics for {member.display_name}:\n{stats}")
-
 
     @slash.slash(
         name="reconnect",
@@ -1310,7 +1229,6 @@ class slashCmds:
         profanity_filter.restore_profane_word_dictionaries()
         system("python3.9 bb.py")
 
-
     @slash.slash(
         name="snowflake",
         description="Returns the creation date of the Discord ID given.",
@@ -1327,7 +1245,6 @@ class slashCmds:
     async def _snowflake(ctx:SlashContext, object_id:str):
         createTime=discord.Object(int(object_id)).created_at.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
         await ctx.send(f"Object with ID of `{object_id}` was created at `{createTime} CST`")
-
 
     @slash.slash(
         name="setraw",
@@ -1414,7 +1331,6 @@ class slashCmds:
         client.Data[member.id][data_type]=newValueType(new_value)
 
         await ctx.send("Success!")
-
 
     @slash.slash(
         name="deprecated",
@@ -1513,6 +1429,25 @@ class slashCmds:
         else:
             await ctx.send(f"Seriously? You gotta add an option, bud...")
 
+    @slash.slash(
+        name="hash",
+        description="Returns the SHA-256 hash of the input text.",
+        guild_ids=GUILDS,
+        options=[
+            create_option(
+                name="text",
+                description="Encoded into utf-8 bytes.",
+                option_type=3, #str
+                required=True
+            )
+        ]
+    )
+    async def _sha(ctx:SlashContext, text:str):
+        hashed=sha(text.encode()).hexdigest()
+        embed=discord.Embed(color=discord.Color.blue())
+        embed.add_field(name="SHA256 SUM",value=f"```fix\n{hashed}```")
+        await ctx.send(embed=embed)
+
 ####################################################################################################
 
 @slash.slash(
@@ -1547,7 +1482,6 @@ async def _test(ctx:SlashContext):
     fname="_warn"
     print(getattr(slashCmds,fname).__doc__)
     await ctx.send(f"Sucessfully tested, {ctx.author.mention}!")
-
 
 @slash.slash(
     name="testembed",
