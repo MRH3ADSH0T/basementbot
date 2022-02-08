@@ -3,7 +3,6 @@
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
 # discord-oriented tools
-from click import option
 import discord
 from discord.ext import commands
 import json
