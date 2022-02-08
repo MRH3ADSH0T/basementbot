@@ -2,6 +2,9 @@
 # Documentation:    https://discordpy.readthedocs.io/en/latest/api.html
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
+from timeit import default_timer as dt
+st=dt() # start of all code
+
 # discord-oriented tools
 import discord
 from discord.ext import commands
@@ -17,7 +20,6 @@ from dotenv import dotenv_values as dev
 from os import system
 # time
 from datetime import datetime as datet
-from timeit import default_timer as dt
 from pytz import timezone
 # misc.
 import random as rand
@@ -76,7 +78,6 @@ ALIASES=DEPRECATED+[
     "hash"
 ]
 
-st=dt() # start of all functions
 # user defined functions
 def create(data:dict[int,dict[str,]], id_:int, name:str, time:str): # creates a member in the member data dictionary
     if id_ in data:
@@ -256,7 +257,17 @@ async def on_ready(): # do all this on startup...
             await client.basementC.send(f"Good morning guys...")
             client.Data["GMday"]=now.day # reset day
             client.Data["randTime"]=[rand.randint(5,14),rand.randint(0,59)] # new random time
-
+        
+        if (now.hour,now.minute,now.second)==(12,0,0):
+            for member in [i for i in client.Data if type(i)==int]:
+                if client.Data[member]["birthday"]==_dt[:5]:
+                    embed=discord.Embed(
+                        title="HAPPY BIRTHDAY!",
+                        description=f"Wishing <@{member}> a happy birthday! :tada:",
+                        color=discord.Color.blue()
+                    )
+                    await client.basementC.send(embed=embed)
+        
         if now.second==59 and now.minute==59 and now.hour==23 and now.day!=31 and now.month!=12: # will say "Goodnight, y'all" EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
 
@@ -283,7 +294,6 @@ async def on_ready(): # do all this on startup...
             save(client.Data)
 
         await aio.sleep(1)
-
 
 @client.event
 async def on_member_join(member):
@@ -658,6 +668,7 @@ async def on_message(message:discord.Message):
 
 
 ####################################################################################################
+
 
 class slashCmds:
     @slash.slash(
@@ -1263,42 +1274,16 @@ class slashCmds:
                 option_type=3, #str
                 required=True,
                 choices=[
-                    create_choice(
-                        name="Warn Count",
-                        value="warnCount"
-                    ),
-                    create_choice(
-                        name="Mute Count",
-                        value="muteCount"
-                    ),
-                    create_choice(
-                        name="Ban Count",
-                        value="banCount"
-                    ),
-                    create_choice(
-                        name="Message Count",
-                        value="msgCount"
-                    ),
-                    create_choice(
-                        name="Highest Counting Score",
-                        value="msgCount"
-                    ),
-                    create_choice(
-                        name="Old Permission Level",
-                        value="permLvl"
-                    ),
-                    create_choice(
-                        name="Counting Fails",
-                        value="countFails"
-                    ),
-                    create_choice(
-                        name="Join Date",
-                        value="joinDate"
-                    ),
-                    create_choice(
-                        name="Old Mute Check",
-                        value="isMuted"
-                    )
+                    create_choice(name="Warn Count",value="warnCount"),
+                    create_choice(name="Mute Count",value="muteCount" ),
+                    create_choice(name="Ban Count",value="banCount"),
+                    create_choice(name="Birthday",value="birthday"),
+                    create_choice(name="Message Count",value="msgCount"),
+                    create_choice(name="Highest Counting Score",value="msgCount"),
+                    create_choice(name="Old Permission Level",value="permLvl"),
+                    create_choice( name="Counting Fails",value="countFails"),
+                    create_choice(name="Join Date",value="joinDate"),
+                    create_choice(name="Old Mute Check",value="isMuted")
                 ]
             ),
             create_option(
@@ -1454,6 +1439,91 @@ class slashCmds:
         embed.add_field(name="SHA256 SUM",value=f"```fix\n{hashed}```")
         await ctx.send(embed=embed)
 
+    @slash.slash(
+        name="birthdays",
+        description="Will list all of the birthdays!",
+        guild_ids=GUILDS
+    )
+    async def _birthdays(ctx:SlashContext):
+        embed=discord.Embed(color=discord.Color.blue())
+        embeds=[embed]
+        #bdaylist="\n".join(f"<@{member}>: {client.Data[member]['birthday']}" for member in client.Data if type(member)==int and client.Data[member]['birthday'])
+        bdaylist,multiple="",False
+        for member in client.Data:
+            if type(member)==int and client.Data[member]['birthday']:
+                if len(bdaylist)<1000:
+                    bdaylist+=f"<@{member}>: {client.Data[member]['birthday']}\n"
+                else:
+                    embeds[-1].add_field(name="Some of the birthdays!",value=bdaylist[:-1])
+                    multiple=True
+                    embeds+=[discord.Embed(color=discord.Color.blue())]
+                    bdaylist=""
+                    bdaylist+=f"<@{member}>: {client.Data[member]['birthday']}\n"
+        
+        if not bdaylist: bdaylist="None!"
+        embeds[-1].add_field(name=f"{'More birthdays!' if multiple else 'All the birthdays!'}",value=bdaylist)
+        await ctx.send(embeds=embeds)
+
+    @slash.slash(
+        name="setbday",
+        description="Adds or modifies your birthday entry in BasementBot's list.",
+        guild_ids=GUILDS,
+        options=[
+            create_option(
+                name="month",
+                description="Month",
+                option_type=4, #int
+                required=True,
+                choices=[
+                    create_choice(name="January",value=1),
+                    create_choice(name="February",value=2),
+                    create_choice(name="March",value=3),
+                    create_choice(name="April",value=4),
+                    create_choice(name="May",value=5),
+                    create_choice(name="June",value=6),
+                    create_choice(name="July",value=7),
+                    create_choice(name="August",value=8),
+                    create_choice(name="September",value=9),
+                    create_choice(name="October",value=10),
+                    create_choice(name="November",value=11),
+                    create_choice(name="December",value=12)
+                ]
+            ),
+            create_option(
+                name="day",
+                description="Day",
+                option_type=4, #int
+                required=True,
+                #choices=[create_choice(name=str(i),value=i) for i in range(1,32)]
+            )
+        ]
+    )
+    async def _setbday(ctx:SlashContext,month:int,day:int):
+        if not 1<=day<=31:
+            #error
+            embed=discord.Embed(
+                title="Error!",
+                description="Specify a valid date!",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed)
+        else:
+            day=str(day)
+            month=str(month)
+            if len(day)<2: day="0"+day
+            if len(month)<2: month="0"+month
+
+            if client.Data[ctx.author_id]['birthday']: old=' from `'+client.Data[ctx.author_id]['birthday']+'`'
+            else: old=''
+            client.Data[ctx.author_id]['birthday']=f"{month}/{day}"
+            embed=discord.Embed(
+                title="Success!",
+                description=f"Your birthday was changed to `{client.Data[ctx.author_id]['birthday']}`{old}.",
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=embed)
+
+
 ####################################################################################################
 
 @slash.slash(
@@ -1542,6 +1612,5 @@ async def _embtest(ctx:SlashContext):
     #embed.set_image(url="https://cdn.discordapp.com/icons/858065227722522644/e708a44944ffd06fd9745d495f9c16c9.webp")
     await ctx.send(embed=embed)
 
-print(f"Loaded all functions in {dt()-st}s!")
+print(f"Loaded entire code in {dt()-st}s!")
 client.run(token)
-
