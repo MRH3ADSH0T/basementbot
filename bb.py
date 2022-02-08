@@ -1372,7 +1372,7 @@ class slashCmds:
                 description=f"I couldnt find the command: `{command}`",
                 color=discord.Color.red()
             )
-            ctx.send(embed=embed)
+            await ctx.send(embed=embed)
 
     @slash.slash(
         name="blacklist",
