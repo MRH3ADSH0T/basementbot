@@ -1445,10 +1445,12 @@ class slashCmds:
             description="Each command and it's usage.",
             color=discord.Color(0xff0000)
         )
-        help=parseDesciptions(command)
-        #map(embed.add_field,help,help.values())
-        for cmd in help: embed.add_field(name=f"/{cmd}",value=help[cmd],inline=False)
-        await ctx.send(embed=embed)
+        if command and command[0]!="/": command="/"+command
+        if command and command in ["\n"+cmd for cmd in dir(slashCmds) if not cmd.startswith("__")]:
+            help=parseDesciptions(command)
+            #map(embed.add_field,help,help.values())
+            for cmd in help: embed.add_field(name=f"/{cmd}",value=help[cmd],inline=False)
+            await ctx.send(embed=embed)
 
     @slash.slash(
         name="blacklist",
