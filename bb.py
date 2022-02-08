@@ -31,7 +31,7 @@ from profanity_filter import ProfanityFilter
 
 # initialize discord API
 client=commands.Bot(
-    command_prefix="$",
+    command_prefix="",
     intents=discord.Intents.all(),
     max_messages=1024,
     owner_id=483000308876967937 # Me
@@ -1358,14 +1358,21 @@ class slashCmds:
         embed=discord.Embed(
             title="Help command",
             description="Each command and it's usage.",
-            color=discord.Color(0xff0000)
+            color=discord.Color.blue()
         )
         if command and command[0]!="/": command="/"+command
-        if command and command in ["\n"+cmd for cmd in dir(slashCmds) if not cmd.startswith("__")]:
+        if not command or command in ["\n"+cmd for cmd in dir(slashCmds) if not cmd.startswith("__")]:
             help=parseDesciptions(command)
             #map(embed.add_field,help,help.values())
             for cmd in help: embed.add_field(name=f"/{cmd}",value=help[cmd],inline=False)
             await ctx.send(embed=embed)
+        else:
+            embed=discord.Embed(
+                title="Error",
+                description=f"I couldnt find the command: `{command}`",
+                color=discord.Color.red()
+            )
+            ctx.send(embed=embed)
 
     @slash.slash(
         name="blacklist",
