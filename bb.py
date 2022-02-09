@@ -92,7 +92,8 @@ def create(data:dict[int,dict[str,]], id_:int, name:str, time:str): # creates a 
                "permLvl":0,
                "countHigh":0,
                "countFails":0,
-               "joinDate":time}               
+               "joinDate":time,
+               "birthday":""}               
 
 def save(dictionary): # saves member data in dictionary to hard storage
     direct=dirname(__file__)
@@ -170,6 +171,22 @@ def parseDesciptions(cmd:str=None)->dict:
                 out[name]=desc
 
     return out
+
+def convertAttr(attr:str)->str:
+    translations={
+        "name":"Name",
+        "isMuted":"Is muted?",
+        "warnCount":"Warn count",
+        "muteCount":"Mute count",
+        "banCount":"Ban count",
+        "msgCount":"Message count",
+        "permLvl":"Permission level",
+        "countHigh":"Highest count",
+        "countFails":"Count fails",
+        "joinDate":"Date joined",
+        "birthday":"Birthday"
+    }
+    return translations[attr] if attr in translations else "INTERNALERROR"
 
 #def scanMessage(phrase:str, string:str) -> bool:
 #    phrase=phrase.lower()
@@ -411,17 +428,25 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
 
 @client.event
 async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
-    emoji=payload.emoji
-    if payload.channel_id==904798931236552776: # polls channel
+    emoji:discord.PartialEmoji=payload.emoji
+    emojiAuth:discord.Member=client.get_user(payload.user_id)
+    try: channel:discord.TextChannel=await client.fetch_channel(payload.channel_id)
+    except: return
+    message:discord.Message=await channel.fetch_message(payload.message_id)
+    if payload.channel_id==858156662703128577: # polls channel
 
         message=await client.get_channel(858156662703128577).fetch_message(payload.message_id)
 
-        if emoji not in (client.get_emoji(858556326548340746),client.get_emoji(858556294743064576)) and message.author.bot:
-            await message.remove_reaction(emoji,payload.member)
+        if not emoji in (client.get_emoji(858556326548340746),client.get_emoji(858556294743064576)) and not message.author.bot:
+            await message.remove_reaction(emoji,emojiAuth)
 
-    elif emoji==client.get_emoji(935571232173199380):
-        channel:discord.TextChannel=client.get_channel(payload.channel_id)
-        await channel.send("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a ****? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
+    #elif emoji==client.get_emoji(935571232173199380):
+    #    channel:discord.TextChannel=client.get_channel(payload.channel_id)
+    #    await channel.send("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a ****? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
+
+    if emoji==client.get_emoji(940789559829082212):
+        await message.remove_reaction(emoji,emojiAuth)
+        await client.modLog.send(f"{emojiAuth.display_name} flagged a message here: {message.jump_url}")
 
 @client.event
 async def on_message(message:discord.Message):
@@ -733,7 +758,7 @@ class slashCmds:
             )
         ]
     )
-    async def _dm(ctx:SlashContext, member:discord.Member, message:str):
+    async def _dm(ctx:SlashContext,member:discord.Member,message:str):
         try:
             _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
             # main command execution
@@ -772,7 +797,7 @@ class slashCmds:
             )
         ]
     )
-    async def _count(ctx:SlashContext, new_number:int):
+    async def _count(ctx:SlashContext,new_number:int):
         client.Data["counting"]=new_number
         client.Data["lastAuth"]=ctx.author_id
 
@@ -829,7 +854,7 @@ class slashCmds:
             )
         ]
     )
-    async def _poll(ctx:SlashContext, poll:str):
+    async def _poll(ctx:SlashContext,poll:str):
 
         pollChannel=client.get_channel(858156662703128577)
         polled:discord.Message=await pollChannel.send(f"{client.kRole.mention}, "+poll)
@@ -870,7 +895,7 @@ class slashCmds:
             )
         ]
     )
-    async def _recent(ctx:SlashContext, channel:discord.TextChannel, messages:int=50):
+    async def _recent(ctx:SlashContext,channel:discord.TextChannel,messages:int=50):
         text=f"LAST {messages} LINES OF {channel.name}\n\n"
         with open(f"{client.dir}/logs/{channel.id}.txt", "r") as f:
             for line in f.readlines()[-messages:]:
@@ -912,7 +937,7 @@ class slashCmds:
             )
         ]
     )
-    async def _warn(ctx:SlashContext, member:discord.Member, message:str=None):
+    async def _warn(ctx:SlashContext,member:discord.Member,message:str=None):
         client.Data[member.id]["warnCount"]+=1
         warnCt=client.Data[member.id]["warnCount"]
 
@@ -968,7 +993,7 @@ class slashCmds:
             )
         ]
     )
-    async def _clear(ctx:SlashContext, amount:int=20, contains:str=None, user:discord.Member=None):
+    async def _clear(ctx:SlashContext,amount:int=20,contains:str=None,user:discord.Member=None):
 
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
@@ -1008,7 +1033,7 @@ class slashCmds:
             )
         ]
     )
-    async def _msgcount(ctx:SlashContext, user=None):
+    async def _msgcount(ctx:SlashContext,user=None):
         if not user: user=ctx.author
         msgC=client.Data[user.id]["msgCount"]
         await ctx.send(f"{user.display_name}'s message count: {msgC}")
@@ -1087,7 +1112,7 @@ class slashCmds:
             )
         ]
     )
-    async def _retrieve(ctx:SlashContext, channel:discord.TextChannel=None, member:discord.Member=None, other:str=None):
+    async def _retrieve(ctx:SlashContext,channel:discord.TextChannel=None,member:discord.Member=None,other:str=None):
 
         if channel:
             await client.modLog.send(file=discord.File(f"{client.dir}/logs/{channel.id}.txt"))
@@ -1145,7 +1170,7 @@ class slashCmds:
             )
         ]
     )
-    async def _create(ctx:SlashContext, member:discord.Member, join_time:str=None):
+    async def _create(ctx:SlashContext,member:discord.Member,join_time:str=None):
         if not join_time: join_time=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         create(client.Data, member.id, member.name, join_time)
         await ctx.send(f"Sucessfully created memeber {member.display_name}, {member.mention}!")
@@ -1176,7 +1201,7 @@ class slashCmds:
             )
         ]
     )
-    async def _announce(ctx:SlashContext, message:str):
+    async def _announce(ctx:SlashContext,message:str):
         await client.announcementC.send(f"{client.kRole.mention}, {message}") # sends the announcement to the #announcements channel.... mention kiddie role
         await ctx.send(f"Success!")
 
@@ -1193,7 +1218,7 @@ class slashCmds:
             )
         ]
     )
-    async def _stats(ctx:SlashContext, member:discord.Member=None):
+    async def _stats(ctx:SlashContext,member:discord.Member=None):
         if not member: member=ctx.author
 
         fails:int=client.Data[member.id]["countFails"]
@@ -1252,7 +1277,7 @@ class slashCmds:
             )
         ]
     )
-    async def _snowflake(ctx:SlashContext, object_id:str):
+    async def _snowflake(ctx:SlashContext,object_id:str):
         createTime=discord.Object(int(object_id)).created_at.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
         await ctx.send(f"Object with ID of `{object_id}` was created at `{createTime} CST`")
 
@@ -1385,6 +1410,7 @@ class slashCmds:
             )
         ]
     )
+    # only @staff can use this command
     @slash.permission(
         guild_id=GUILDS[0],
         permissions=[
@@ -1395,7 +1421,7 @@ class slashCmds:
             )
         ]
     )
-    async def _blw(ctx:SlashContext, add:str=None, remove:str=None, list:str=None):
+    async def _blw(ctx:SlashContext,add:str=None,remove:str=None,list:str=None):
         "All blacklisted word operations stem from this command."
         if add:
             word=add.lower()
@@ -1523,6 +1549,39 @@ class slashCmds:
             )
             await ctx.send(embed=embed)
 
+    @slash.slash(
+        name="modinfo",
+        description="Will retrieve the member's mute count, warn count, ect.",
+        guild_ids=GUILDS,
+        default_permission=False,
+        options=[
+            create_option(
+                name="member",
+                description="Can be anyone except for bots.",
+                option_type=6, #member
+                required=True
+            )
+        ]
+    )
+    # only @staff can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=STAFF_ID,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _modinfo(ctx:SlashContext,member:discord.Member):
+        if member.bot: await ctx.send("Why? Why would you ignore the command description...? No bots!!!")
+        else:
+            embed=discord.Embed(title=member.display_name,color=discord.Color.blue())
+            for attr in client.Data[member.id]:
+                if attr not in ["countHigh","countFails","isMuted","birthday"]:
+                    embed.add_field(name=convertAttr(attr),value=f"```{client.Data[member.id][attr]}```")#,inline=False)
+            await ctx.send(embed=embed)
 
 ####################################################################################################
 
