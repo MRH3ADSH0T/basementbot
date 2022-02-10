@@ -17,13 +17,14 @@ from discord_slash import SlashContext, SlashCommand
 from discord_slash.utils.manage_commands import create_option, create_choice, create_permission
 # system
 from sys import getsizeof
-from os.path import isfile, dirname, getsize
+from os.path import isfile, dirname, getsize, getmtime
 from contextlib import redirect_stdout
 from dotenv import dotenv_values as dev
 from os import system
 # time
 from datetime import datetime as datet
 from pytz import timezone
+import time
 # misc.
 import random as rand
 from hashlib import sha256 as sha
@@ -715,9 +716,10 @@ class slashCmds:
     )
     async def _joindate(ctx:SlashContext,member:discord.Member=None):
         if not member: member=ctx.author
+        embed=discord.Embed(title=member.display_name,color=member.color)
+        embed.add_field(name="Join Date",value=f"```{client.Data[member.id]['joinDate']}```")
 
-        jd=client.Data[member.id]["joinDate"]
-        await ctx.send(f"{member.display_name} joined {ctx.guild.name} on `{jd}`")
+        await ctx.send(embed=embed)
 
     @slash.slash(
         name="howmanylines",
@@ -725,10 +727,14 @@ class slashCmds:
         guild_ids=GUILDS
     )
     async def _howmanylines(ctx:SlashContext):
+        lastMod=time.strftime("%m/%d/%Y %H:%M:%S", time.localtime(getmtime(client.dir+"/bb.py")))
         with open("bb.py",'r') as f: lines=len(f.readlines())+1
         size=round(getsize("bb.py")/1024,2)
-
-        await ctx.send(f"{client.user.mention} is made up of `{lines}` lines of code and is `{size}` kilobytes large.\nPlease visit <https://bot.thebasement.group> for more data!")
+        embed=discord.Embed(title="Bot statistics",description="Visit <https://bot.thebasement.group> for more data!",color=discord.Color.blue())
+        embed.add_field(name="Lines",value=f"```{lines}```")
+        embed.add_field(name="Size",value=f"```{size}KB```")
+        embed.add_field(name="Last edit",value=f"```{lastMod} CST```",inline=False)
+        await ctx.send(embed=embed)
 
     @slash.slash(
         name="dm",
@@ -770,11 +776,10 @@ class slashCmds:
             # log
             await client.modLog.send(f"```{_dt} - {ctx.author.display_name} messaged {member.display_name}:\n\"{message}\"```")
             # report success.
-            await ctx.send("Success!")
+            await ctx.send(embed=discord.Embed(title="Success!",description=f"Sent {member.display_name} a direct message!",color=discord.Color.blue()))
         
-        except discord.errors.Forbidden:
-            await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
-            return
+        except discord.errors.Forbidden:    await ctx.send(embed=discord.Embed(title="Error!",description=f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red()))
+        except AttributeError:              await ctx.send(embed=discord.Embed(title="Error!",description=f"Were you trying to DM me? You can't DM me...",color=discord.Color.red()))
 
     @slash.slash(
         name="count",
