@@ -5,8 +5,8 @@
 from timeit import default_timer as dt
 st=dt() # start of all code
 
-import warnings
-warnings.filterwarnings("ignore")
+#import warnings
+#warnings.filterwarnings("ignore")
 
 # discord-oriented tools
 import discord
@@ -29,12 +29,10 @@ import time
 import random as rand
 from hashlib import sha256 as sha
 from io import StringIO
-from profanity_filter import ProfanityFilter
-from profanity_check import predict as pf_predict
+#from profanity_filter import ProfanityFilter
+#from profanity_check import predict as pf_predict
 
-#from base64 import b64encode
-#from tzlocal import get_localzone as glz
-
+BOOT_TIME=datet.now().strftime("%m/%d/%Y %H:%M:%S")
 
 # initialize discord API
 client=commands.Bot(
@@ -47,9 +45,8 @@ slash=SlashCommand(client, sync_commands=True)
 token=dict(dev(".env"))["bottoken"]
 
 # profanity library init
-profanity_filter=ProfanityFilter()
-profanity_filter.censor_char="."
-# see on_ready for extra dictionaries
+#profanity_filter=ProfanityFilter()
+#profanity_filter.censor_char="."
 
 # current directory
 client.dir=dirname(__file__)
@@ -193,19 +190,21 @@ def convertAttr(attr:str)->str:
     }
     return translations[attr] if attr in translations else "INTERNALERROR"
 
-#def scanMessage(phrase:str, string:str) -> bool:
-#    phrase=phrase.lower()
-#    string=string.lower()
-#    chars=[".",",","-","‎"]
-#    for char in chars:
-#        if (phrase in string.replace(char,"").split(" ")):# and not phrase in string:
-#            return string.replace(char,"").replace(phrase, f"||{phrase}||")
-#    if phrase in string.replace(" ","") and not phrase in string:
-#        return string.replace(" ","").replace(phrase, f"||{phrase}||")
-#    elif f" {phrase} " in string or phrase==string:
-#        return string.replace(phrase, f"||{phrase}||")
-#    else:
-#        return False
+def scanMessage(phrase:str, string:str) -> bool:
+    phrase=phrase.lower()
+    string=string.lower()
+    chars=[".",",","-","‎"]
+    try: percent=len([i for i in string if i==" "])/len(string)
+    except ZeroDivisionError: percent=1
+    for char in chars:
+        if (phrase in string.replace(char,"").split(" ")):# and not phrase in string:
+            return string.replace(char,"").replace(phrase, f"||{phrase}||")
+    if phrase in string.replace(" ","") and not phrase in string and percent>.45:
+        return string.replace(" ","").replace(phrase, f"||{phrase}||")
+    elif f" {phrase} " in string or phrase==string:
+        return string.replace(phrase, f"||{phrase}||")
+    else:
+        return False
 
 # Grab our json/dictionary
 client.Data=load()
@@ -236,7 +235,6 @@ async def on_ready(): # do all this on startup...
     client.announcementC=client.basement.get_channel(858156757788524554)
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
-    profanity_filter.extra_profane_word_dictionaries={"en":{i for i in client.Data["blw"]}}
     print(f"Set up client variables in {dt()-st}s!")
 
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
@@ -451,7 +449,8 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
 
     if emoji==client.get_emoji(940789559829082212):
         await message.remove_reaction(emoji,emojiAuth)
-        await client.modLog.send(f"{emojiAuth.display_name} flagged a message here: {message.jump_url}")
+        embed=discord.Embed(title="Red Flag!",description=f"{emojiAuth.mention} red flagged [this message]({message.jump_url})",color=discord.Color.red())
+        await client.modLog.send(embed=embed)
 
 @client.event
 async def on_message(message:discord.Message):
@@ -459,7 +458,6 @@ async def on_message(message:discord.Message):
     clean:str=message.clean_content # removes mentions and the like
     auth:discord.Member=message.author # get author
     _dt:str=datet.now().strftime("%m/%d/%Y %H:%M:%S") # get current time/date
-
 
     if auth==client.user or auth.bot: # prevent self or other bots from initiating basementbot interactions
         return
@@ -482,8 +480,7 @@ async def on_message(message:discord.Message):
             said=f"replied to {rAuth.display_name} ({reply.message_id}) with"
         else:
             said="said"
-    except:
-        said="replied to someone with"
+    except: said="replied to someone with"
 
     with open(f"{dirname(__file__)}/logs/{message.channel.id}.txt", "a", encoding="utf-8") as f: # record message. this is useful. very useful. i love data. lots of data
         print(f"{_dt} {auth.name} ({auth.display_name}) {said} \"{clean}\" (path: {message.channel.id}/{message.id})", file=f)
@@ -494,11 +491,18 @@ async def on_message(message:discord.Message):
 
     #################################### blacklisted word check ####################################
 
-    if pf_predict([clean]) and "sick" not in clean.lower():
-        filtered=[]
-        for word in clean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
-        await message.delete()
-        await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted in {message.channel.mention}: \"{' '.join(filtered)}\"")
+    #if pf_predict([clean]) and "sick" not in clean.lower():
+    #    filtered=[]
+    #    for word in clean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
+    #    await message.delete()
+    #    await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted in {message.channel.mention}: \"{' '.join(filtered)}\"")
+
+    for word in client.Data["blw"]:
+        filtered=scanMessage(word,clean)
+        if filtered and (message.channel.id!=932125853003943956 and clean.lower()!="ass"):
+            await message.delete()
+            embed=discord.Embed(description=f"{auth.mention}'s message was deleted.\n\"{filtered}\"",color=discord.Color.red())
+            await client.modLog.send(embed=embed)
 
     ################################################################################################
 
@@ -580,7 +584,7 @@ async def on_message(message:discord.Message):
                 client.Data["lastAuth"]=0
                 client.Data[auth.id]["countFails"]+=1
                 cf=client.Data[auth.id]["countFails"]
-                await message.channel.send(embed=discord.Embed(title="Count reset!",description=f"{auth.mention} reset the count! Their fail count: `{cf}`.\nThe count is now `0`. (The highscore is `{client.Data['high']}`)",color=discord.Color.blue()))
+                await message.channel.send(embed=discord.Embed(title="Count reset!",description=f"{auth.mention} reset the count! Their fail count: `{cf}`.\nThe count is now `0`. (The highscore is `{client.Data['high']}`)",color=discord.Color.red()))
 
         elif clean=="?":
             await message.delete()
@@ -592,7 +596,6 @@ async def on_message(message:discord.Message):
             info.add_field(name="Percent of highscore",value=f"```{percent}%```")
             info.add_field(name="Last counter",value=last,inline=False)
             await message.channel.send(embed=info)
-
 
         else: pass
 
@@ -708,6 +711,7 @@ class slashCmds:
         embed.add_field(name="Lines",value=f"```{lines}```")
         embed.add_field(name="Size",value=f"```{size}KB```")
         embed.add_field(name="Last edit",value=f"```{lastMod} CST```",inline=False)
+        embed.add_field(name="Last boot time",value=f"```{BOOT_TIME}```",inline=False)
         await ctx.send(embed=embed)
 
     @slash.slash(
@@ -1246,7 +1250,7 @@ class slashCmds:
         await client.close()
         del client.Data
         print("Reconnecting...")
-        profanity_filter.restore_profane_word_dictionaries()
+        #profanity_filter.restore_profane_word_dictionaries()
         system("python3.9 bb.py")
 
     @slash.slash(
@@ -1412,7 +1416,7 @@ class slashCmds:
             word=add.lower()
             if word not in client.Data["blw"]:
                 client.Data["blw"]+=[word]
-                profanity_filter.extra_profane_word_dictionaries["en"].add(word)
+                #profanity_filter.extra_profane_word_dictionaries["en"].add(word)
                 await ctx.send("Successfully added a new word to the blacklist.")
             else:
                 await ctx.send("That word already exists in the list!")
@@ -1420,12 +1424,12 @@ class slashCmds:
             word=remove.lower()
             if word in client.Data["blw"]:
                 client.Data["blw"].remove(word)
-                profanity_filter.extra_profane_word_dictionaries["en"].remove(word)
+                #profanity_filter.extra_profane_word_dictionaries["en"].remove(word)
                 await ctx.send("Successfully deleted that word from the blacklist.")
             else:
                 await ctx.send("That word isn't in the blacklist!")
         elif list:
-            listed=", ".join(f"||{i}||" for i in profanity_filter.extra_profane_word_dictionaries['en'])
+            listed=", ".join(f"||{i}||" for i in client.Data["blw"])
             await client.modLog.send(f"{ctx.author.mention} here is a list of very naughty words:\n{listed}")
             await ctx.send(f"Success!")
         else:
