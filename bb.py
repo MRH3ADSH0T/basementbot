@@ -580,32 +580,21 @@ async def on_message(message:discord.Message):
                 client.Data["lastAuth"]=0
                 client.Data[auth.id]["countFails"]+=1
                 cf=client.Data[auth.id]["countFails"]
-                await message.channel.send(f"{auth.mention} reset the count! Their fail count: `{cf}`. The count is now `0`. (The highscore is `{client.Data['high']}`)")
-
-        elif msg.startswith("$stat") and msg.split(" ")[0].endswith("s"):
-                await message.delete()
-                if message.mentions:
-                    targetID:int=message.mentions[0].id
-                    targetName:str=message.mentions[0].display_name
-                else:
-                    targetID:int=auth.id
-                    targetName:str=auth.display_name
-                fails:int=client.Data[targetID]["countFails"]
-                high:int=client.Data[targetID]["countHigh"]
-                totalHigh:int=client.Data["high"]
-                percent=(high/totalHigh)*100
-                stats=f"Count Fails: `{fails}`\nHighest number: `{high}`, which is `{round(percent,2)}%` of the highscore!"
-                await message.channel.send(f"Here are the {message.channel.mention} statistics for {targetName}:\n{stats}")
+                await message.channel.send(embed=discord.Embed(title="Count reset!",description=f"{auth.mention} reset the count! Their fail count: `{cf}`.\nThe count is now `0`. (The highscore is `{client.Data['high']}`)",color=discord.Color.blue()))
 
         elif clean=="?":
             await message.delete()
             percent=round(client.Data["counting"]/client.Data["high"]*100,2)
-            if client.Data["lastAuth"]!=0: last=client.basement.get_member(client.Data["lastAuth"]).display_name
-            else: last="no one"
-            info=await message.channel.send(f"The current count is at `{client.Data['counting']}` and the last person to count was `{last}`!\nThat's `{percent}%` of the highscore!")
-            await info.add_reaction("❓")
+            if client.Data["lastAuth"]!=0: last=client.basement.get_member(client.Data["lastAuth"]).mention
+            else: last="**No one!**"
+            info=discord.Embed(title=f"#counting info",color=discord.Color.blue())
+            info.add_field(name="Current count",value=f"```{client.Data['counting']}```")
+            info.add_field(name="Percent of highscore",value=f"```{percent}%```")
+            info.add_field(name="Last counter",value=last,inline=False)
+            await message.channel.send(embed=info)
 
-        else: pass #await message.add_reaction("#️⃣")
+
+        else: pass
 
     # +++++ alphabet counting +++++
     if message.channel.id==932125853003943956:
@@ -621,21 +610,7 @@ async def on_message(message:discord.Message):
         else:
             await message.delete()
 
-
-    # +++++ word-assoc +++++
-    
-    #    if message.channel==client.wrdAssocC:
-    #        countSpaces=lambda s:len([i for i in s if i==' '])
-    #        if not msg.startswith("> ") and countSpaces(msg)>=3:
-    #            await message.delete()
-    #            await client.wrdAssocC.send(f"> {auth.display_name}, I detected that you \
-    #may have used a sentence. Please read the rules in this channel's description \
-    #or contact __Josh S.__ if you believe this is an error.")
-    #        elif auth.id==client.Data["lastWAAuth"] and not msg.startswith("> "):
-    #            await message.delete()
-    #            await client.wrdAssocC.send(f"> {auth.display_name}, you have already sent a message! Please wait your turn.")
-    #        else: client.Data["lastWAAuth"]=auth.id
-    
+    # +++++ word-assoc +++++    
 
     # +++++ commands +++++
 
@@ -698,7 +673,6 @@ async def on_message(message:discord.Message):
 
 
 ####################################################################################################
-
 
 class slashCmds:
     @slash.slash(
@@ -809,9 +783,9 @@ class slashCmds:
     async def _count(ctx:SlashContext,new_number:int):
         client.Data["counting"]=new_number
         client.Data["lastAuth"]=ctx.author_id
-
-        await client.counting.send(f"{ctx.author.display_name} changed the count to `{new_number}`!\nAnyone except {ctx.author.display_name} can type!")
-        await ctx.send(f"Success!")
+        report=discord.Embed(title=f"Current number updated to `{new_number}`!",description=f"Anyone but {ctx.author.mention} can increase the count.",color=discord.Color.blue())
+        await client.counting.send(embed=report)
+        if ctx.channel!=client.counting: await ctx.send(embed=discord.Embed(title="Success!",color=discord.Color.blue()))
 
     @slash.slash(
         name="disconnect",
@@ -960,7 +934,7 @@ class slashCmds:
         if message:
             try:
                 await member.send(f"Dear, {member.display_name},\n\n{message}\n\n\t\tSincerely, The Basement Staff Team")
-                await client.modLog.send(f"```{_dt} {ctx.author.display_name} sent {member.display_name}\n\"{message}\"")
+                await client.modLog.send(f"```{_dt} {ctx.author.mention} sent {member.mention}\n\"{message}\"")
             except discord.errors.Forbidden:
                 await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
                 return
