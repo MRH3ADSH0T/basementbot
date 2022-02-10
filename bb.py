@@ -280,14 +280,10 @@ async def on_ready(): # do all this on startup...
         
         if (now.hour,now.minute,now.second)==(12,0,0):
             for member in [i for i in client.Data if type(i)==int]:
-                if client.Data[member]["birthday"]==_dt[:5]:
-                    embed=discord.Embed(
-                        title="HAPPY BIRTHDAY!",
-                        description=f"Wishing <@{member}> a happy birthday! :tada:",
-                        color=discord.Color.blue()
-                    )
-                    await client.basementC.send(embed=embed)
-        
+                try:
+                    if client.Data[member]["birthday"]==_dt[:5]: await client.basementC.send(embed=discord.Embed(title="HAPPY BIRTHDAY!",description=f"Wishing <@{member}> a happy birthday! :tada:",color=discord.Color.blue()))
+                except KeyError:
+                    print(f"Coudn't find 'happy birthday' for {member} ({client.Data[member]['name']})")
         if now.second==59 and now.minute==59 and now.hour==23 and now.day!=31 and now.month!=12: # will say "Goodnight, y'all" EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
 
@@ -708,11 +704,11 @@ class slashCmds:
         lastMod=time.strftime("%m/%d/%Y %H:%M:%S", time.localtime(getmtime(client.dir+"/bb.py")))
         with open("bb.py",'r') as f: lines=len(f.readlines())+1
         size=round(getsize("bb.py")/1024,2)
-        embed=discord.Embed(title="Bot statistics",description="Visit <https://bot.thebasement.group> for more data!",color=discord.Color.blue())
+        embed=discord.Embed(title="Bot statistics",description="Visit [the bot's webpage](https://bot.thebasement.group) for more data!",color=discord.Color.blue())
         embed.add_field(name="Lines",value=f"```{lines}```")
         embed.add_field(name="Size",value=f"```{size}KB```")
         embed.add_field(name="Last edit",value=f"```{lastMod} CST```",inline=False)
-        embed.add_field(name="Last boot time",value=f"```{BOOT_TIME}```",inline=False)
+        embed.add_field(name="Last boot time",value=f"```{BOOT_TIME} CST```",inline=False)
         await ctx.send(embed=embed)
 
     @slash.slash(
@@ -813,7 +809,7 @@ class slashCmds:
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         save(client.Data) # save data
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
-        await ctx.send(embed=discord.Embed(title="Disconnecting..."),color=discord.Color.red())
+        await ctx.send(embed=discord.Embed(title="Disconnecting...",color=discord.Color.red()))
         print(f"{_dt} {ctx.author.name} initiated disconnect.")
         await client.close()
 
@@ -1221,7 +1217,7 @@ class slashCmds:
         embed=discord.Embed(title=member.display_name,description=f"{client.counting.mention} statistics for {member.mention}",color=member.color)
         embed.add_field(name="Fails",value=f"```{fails}```")
         embed.add_field(name="Highscore",value=f"```{high}```")
-        embed.add_field(name="% of global highscore",value=f"```{round(percent,2)}```",inline=False)
+        embed.add_field(name="% of global highscore",value=f"```{round(percent,2)}%```",inline=False)
 
         await ctx.send(embed=embed)
 
@@ -1250,7 +1246,7 @@ class slashCmds:
     async def _reconnect(ctx:SlashContext):
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S")
         save(client.Data)
-        await ctx.send("Reconnecting...")
+        await ctx.send(embed=discord.Embed(title="Reconnecting...",color=discord.Color.from_rgb(255,255,51))) # yellow
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
         await client.close()
         del client.Data
@@ -1273,7 +1269,7 @@ class slashCmds:
     )
     async def _snowflake(ctx:SlashContext,object_id:str):
         createTime=discord.Object(int(object_id)).created_at.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
-        await ctx.send(f"Object with ID of `{object_id}` was created at `{createTime} CST`")
+        await ctx.send(embed=discord.Embed(description=f"Object with ID of `{object_id}` was created at\n```{createTime} CST```",color=discord.Color.blue()))
 
     @slash.slash(
         name="setraw",
@@ -1326,14 +1322,15 @@ class slashCmds:
     )
     async def _setraw(ctx:SlashContext,member:discord.Member,data_type:str,new_value:str):
 
-        newValueType=type(client.Data[member.id][data_type])
+        try: newValueType=type(client.Data[member.id][data_type])
+        except KeyError: newValueType=str
 
         if newValueType==bool:
             newValueType=new_value.lower()=="true"
 
         client.Data[member.id][data_type]=newValueType(new_value)
 
-        await ctx.send("Success!")
+        await ctx.send(embed=discord.Embed(title="Success!",description=f"{member.mention}'s `{data_type}` is now `{new_value}`!\nYou can verify this with **/modinfo** or **/retrieve**.",color=discord.Color.green()))
 
     @slash.slash(
         name="deprecated",
