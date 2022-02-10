@@ -193,7 +193,7 @@ def convertAttr(attr:str)->str:
 def scanMessage(phrase:str, string:str) -> bool:
     phrase=phrase.lower()
     string=string.lower()
-    chars=[".",",","-","‎"]
+    chars=['"',"'",".",",","-","‎","*"]
     try: percent=len([i for i in string if i==" "])/len(string)
     except ZeroDivisionError: percent=1
     for char in chars:
