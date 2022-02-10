@@ -423,11 +423,12 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
         await before.reply(f"{auth.name} changed their message \"`{Bclean}`\")! The current number is `{client.Data['counting']}`",mention_author=False)
     
     # Profanity filter
-    if profanity_filter.is_profane(Aclean):
-        filtered=[]
-        for word in Aclean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
-        await after.delete()
-        await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted in {after.channel.mention}: \"{' '.join(filtered)}\"")
+    for word in client.Data["blw"]:
+        filtered=scanMessage(word,Aclean)
+        if filtered:
+            await after.delete()
+            embed=discord.Embed(description=f"{auth.mention}'s message was edited to and deleted in {after.channel.mention}.\n\"{filtered}\"",color=discord.Color.red())
+            await client.modLog.send(embed=embed)
 
 @client.event
 async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
@@ -501,7 +502,7 @@ async def on_message(message:discord.Message):
         filtered=scanMessage(word,clean)
         if filtered and (message.channel.id!=932125853003943956 and clean.lower()!="ass"):
             await message.delete()
-            embed=discord.Embed(description=f"{auth.mention}'s message was deleted.\n\"{filtered}\"",color=discord.Color.red())
+            embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red())
             await client.modLog.send(embed=embed)
 
     ################################################################################################
@@ -754,7 +755,7 @@ class slashCmds:
             # log
             await client.modLog.send(f"```{_dt} - {ctx.author.display_name} messaged {member.display_name}:\n\"{message}\"```")
             # report success.
-            await ctx.send(embed=discord.Embed(title="Success!",description=f"Sent {member.display_name} a direct message!",color=discord.Color.blue()))
+            await ctx.send(embed=discord.Embed(title="Success!",description=f"Sent {member.display_name} a direct message!",color=discord.Color.green()))
         
         except discord.errors.Forbidden:    await ctx.send(embed=discord.Embed(title="Error!",description=f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red()))
         except AttributeError:              await ctx.send(embed=discord.Embed(title="Error!",description=f"Were you trying to DM me? You can't DM me...",color=discord.Color.red()))
@@ -789,7 +790,7 @@ class slashCmds:
         client.Data["lastAuth"]=ctx.author_id
         report=discord.Embed(title=f"Current number updated to `{new_number}`!",description=f"Anyone but {ctx.author.mention} can increase the count.",color=discord.Color.blue())
         await client.counting.send(embed=report)
-        if ctx.channel!=client.counting: await ctx.send(embed=discord.Embed(title="Success!",color=discord.Color.blue()))
+        if ctx.channel!=client.counting: await ctx.send(embed=discord.Embed(title="Success!",color=discord.Color.green()))
 
     @slash.slash(
         name="disconnect",
@@ -812,7 +813,7 @@ class slashCmds:
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         save(client.Data) # save data
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
-        await ctx.send(f"Disconnected.")
+        await ctx.send(embed=discord.Embed(title="Disconnecting..."),color=discord.Color.red())
         print(f"{_dt} {ctx.author.name} initiated disconnect.")
         await client.close()
 
@@ -943,7 +944,7 @@ class slashCmds:
                 await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
                 return
 
-        await ctx.send("Success!")
+        await ctx.send(embed=discord.Embed(title="Success!",description=f"{member.mention}'s warn count: `{warnCt}`",color=discord.Color.green()))
 
     @slash.slash(
         name="clear",
@@ -1007,7 +1008,7 @@ class slashCmds:
             print(f"{_dt} - {ctx.author.display_name} ({ctx.author.name}) bulk deleted {amount} messages with contains=\"{contains}\", user=\"{ctx.author.name}#{ctx.author.discriminator}\" params",file=f)
 
         await client.modLog.send(f"```{_dt} {ctx.author.name} deleted {amount} messages from #{ctx.channel.name}```")
-        await ctx.send(f"Successfully deleted {amount} messages.")
+        await ctx.send(embed=discord.Embed(title="Success!",description=f"Successfully deleted `{amount}` messages from {ctx.channel.mention}.",color=discord.Color.green()))
 
     @slash.slash(
         name="msgs",
@@ -1015,17 +1016,19 @@ class slashCmds:
         guild_ids=GUILDS,
         options=[
             create_option(
-                name="user",
+                name="member",
                 description="Specify someone other than you.",
                 option_type=6, #user
                 required=False
             )
         ]
     )
-    async def _msgcount(ctx:SlashContext,user=None):
-        if not user: user=ctx.author
-        msgC=client.Data[user.id]["msgCount"]
-        await ctx.send(f"{user.display_name}'s message count: {msgC}")
+    async def _msgcount(ctx:SlashContext,member:discord.Member=None):
+        if not member: member=ctx.author
+        msgC=client.Data[member.id]["msgCount"]
+        embed=discord.Embed(title=member.display_name,color=member.color)
+        embed.add_field(name="Message count",value=f"```{msgC}```")
+        await ctx.send(embed=embed)
 
     @slash.slash(
         name="log",
@@ -1215,10 +1218,12 @@ class slashCmds:
         totalHigh:int=client.Data["high"]
 
         percent=(high/totalHigh)*100
+        embed=discord.Embed(title=member.display_name,description=f"{client.counting.mention} statistics for {member.mention}",color=member.color)
+        embed.add_field(name="Fails",value=f"```{fails}```")
+        embed.add_field(name="Highscore",value=f"```{high}```")
+        embed.add_field(name="% of global highscore",value=f"```{round(percent,2)}```",inline=False)
 
-        stats=f"Count Fails: `{fails}`\nHighest number: `{high}`, which is `{round(percent,2)}%` of the highscore!"
-
-        await ctx.send(f"Here are the {client.counting.mention} statistics for {member.display_name}:\n{stats}")
+        await ctx.send(embed=embed)
 
     @slash.slash(
         name="reconnect",
@@ -1531,12 +1536,7 @@ class slashCmds:
             if client.Data[ctx.author_id]['birthday']: old=' from `'+client.Data[ctx.author_id]['birthday']+'`'
             else: old=''
             client.Data[ctx.author_id]['birthday']=f"{month}/{day}"
-            embed=discord.Embed(
-                title="Success!",
-                description=f"Your birthday was changed to `{client.Data[ctx.author_id]['birthday']}`{old}.",
-                color=discord.Color.blue()
-            )
-            await ctx.send(embed=embed)
+            await ctx.send(embed=discord.Embed(title="Success!",description=f"Your birthday was changed to `{client.Data[ctx.author_id]['birthday']}`{old}.",color=discord.Color.green()))
 
     @slash.slash(
         name="modinfo",
