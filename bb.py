@@ -5,6 +5,9 @@
 from timeit import default_timer as dt
 st=dt() # start of all code
 
+import warnings
+warnings.filterwarnings("ignore")
+
 # discord-oriented tools
 import discord
 from discord.ext import commands
@@ -26,6 +29,7 @@ import random as rand
 from hashlib import sha256 as sha
 from io import StringIO
 from profanity_filter import ProfanityFilter
+from profanity_check import predict as pf_predict
 
 #from base64 import b64encode
 #from tzlocal import get_localzone as glz
@@ -489,7 +493,7 @@ async def on_message(message:discord.Message):
 
     #################################### blacklisted word check ####################################
 
-    if profanity_filter.is_profane(clean):
+    if pf_predict([clean]) and "sick" not in clean.lower():
         filtered=[]
         for word in clean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
         await message.delete()
@@ -938,6 +942,7 @@ class slashCmds:
         ]
     )
     async def _warn(ctx:SlashContext,member:discord.Member,message:str=None):
+        _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         client.Data[member.id]["warnCount"]+=1
         warnCt=client.Data[member.id]["warnCount"]
 
@@ -950,6 +955,7 @@ class slashCmds:
         if message:
             try:
                 await member.send(f"Dear, {member.display_name},\n\n{message}\n\n\t\tSincerely, The Basement Staff Team")
+                await client.modLog.send(f"```{_dt} {ctx.author.display_name} sent {member.display_name}\n\"{message}\"")
             except discord.errors.Forbidden:
                 await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
                 return
