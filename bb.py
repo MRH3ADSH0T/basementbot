@@ -197,7 +197,7 @@ def scanMessage(phrase:str, string:str) -> bool:
     try: percent=len([i for i in string if i==" "])/len(string)
     except ZeroDivisionError: percent=1
     for char in chars:
-        if (phrase in string.replace(char,"").split(" ")):# and not phrase in string:
+        if (string!="he'll" and phrase in string.replace(char,"").split(" ")):# and not phrase in string:
             return string.replace(char,"").replace(phrase, f"||{phrase}||")
     if phrase in string.replace(" ","") and not phrase in string and percent>.45:
         return string.replace(" ","").replace(phrase, f"||{phrase}||")
@@ -233,6 +233,7 @@ async def on_ready(): # do all this on startup...
     client.lSSC=client.basement.get_channel(933183879983013968) # newest minigame, long-story-short
     client.testC=client.basement.get_channel(933576021641400370) # test channel in dev category
     client.announcementC=client.basement.get_channel(858156757788524554)
+    client.spamC=client.basement.get_channel(871192664840749116) # spam channel
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
@@ -312,7 +313,7 @@ async def on_ready(): # do all this on startup...
         await aio.sleep(1)
 
 @client.event
-async def on_member_join(member):
+async def on_member_join(member:discord.Member):
 
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
@@ -352,7 +353,7 @@ async def on_member_join(member):
     await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="http://basement.minecraftr.us"))
 
 @client.event
-async def on_member_remove(member):
+async def on_member_remove(member:discord.Member):
     await client.welcome.send(f"{member.display_name} has left us... wishing them a happy life :)")
     notBots=[i for i in client.basement.members if not i.bot] # see on_ready()
 
@@ -392,7 +393,7 @@ async def on_member_update(before:discord.Member, after:discord.Member):
             print(f"{_dt} {before.name} ({before.display_name})'s verification was changed from {before.pending} to {after.pending}!", file=f)
 
 @client.event
-async def on_message_delete(message):
+async def on_message_delete(message:discord.Message):
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # get current time/date
     auth=message.author # author
 
@@ -668,7 +669,7 @@ async def on_message(message:discord.Message):
             await message.channel.send(f"{auth.mention}, I ran that python code and I encountered an error.```\n{error}\n```")
         return
 
-    if message.channel.id not in [client.counting.id, client.modLog.id, client.botLog.id, client.wrdAssocC.id, client.lSSC.id] and not msg.startswith("/"):
+    if message.channel.id not in [client.spamC.id, client.counting.id, client.modLog.id, client.botLog.id, client.wrdAssocC.id, client.lSSC.id] and not msg.startswith("/"):
         client.Data[auth.id]["msgCount"]+=1
 
 
