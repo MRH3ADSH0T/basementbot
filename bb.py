@@ -152,17 +152,31 @@ async def nickToMember(nick:str, author:discord.Member):
         await client.modLog.send(f"{author.mention}, there are `{len(memberGuesses)}` people that match the username you provided me with (\"{nick}\") please check your spelling and/or specify further.{glist}")
         return
 
-def verify(i:str):
-    return i.strip() and not i.strip().startswith("#") and len(i.strip())-1
+def verify(i:str)->bool: return i.strip() and not i.strip().startswith("#") and len(i.strip())-1
 
-def parseDesciptions(cmd:str=None)->dict:
+def getPermissions()->dict[str,str]:
+    with open(f"{client.dir}/bb.py",'r') as f: fread=[i.strip() for i in f.read().split("class slashCmds:")[-1].split('\n')]
+    return {l[len("async def _"):].split("(")[0]:fread[i+1][1] for i,l in enumerate(fread) if l.startswith("async def _") and fread[i+1][1] in ["a","s","e"]}
+
+def checkPermission(cmdPerm:str,memberPerm:str)->bool:
+    translation={
+        "a":2,
+        "s":1,
+        "e":0
+    }
+    return translation[cmdPerm]<=translation[memberPerm]
+
+def parseDesciptions(cmd:str=None,maxPerm:str="e")->dict:
     "this was a ***** to code"
-    if not cmd: cmds=["/"+cmd[1:] for cmd in dir(slashCmds) if not cmd.startswith("__")]
+    print(maxPerm)
+    # convert non-listed cmd to all cmds
+    permissions=getPermissions()
+    if not cmd: cmds=["/"+cmd[1:] for cmd in dir(slashCmds) if not cmd.startswith("__") and checkPermission(permissions[cmd[1:]],maxPerm)]
     else: cmds=[cmd]
     out={}
 
-    with open(f"{client.dir}/bb.py",'r') as f:
-        fread=[i.strip() for i in f.read().split("class slashCmds:")[-1].split('\n') if verify(i)]
+    # grabs file from "class slashCmds:" down as list `fread`, no whitespaces
+    with open(f"{client.dir}/bb.py",'r') as f: fread=[i.strip() for i in f.read().split("class slashCmds:")[-1].split('\n') if verify(i)]
 
     for command in cmds:
         for idx,line in enumerate(fread):
@@ -171,7 +185,6 @@ def parseDesciptions(cmd:str=None)->dict:
                 if fread[idx+1].startswith("description=f\""): desc=fread[idx+1][14:-2]
                 else: desc=fread[idx+1][13:-2]
                 out[name]=desc
-
     return out
 
 def convertAttr(attr:str)->str:
@@ -226,7 +239,7 @@ async def on_ready(): # do all this on startup...
     client.basementC=client.basement.get_channel(858157764530798612)
     client.wRole=client.basement.get_role(908491255812616252) # welcome role
     client.kRole=client.basement.get_role(858234453653848065) # kiddie role
-    client.modRole=client.basement.get_role(858234453653848065) # moderator role
+    client.modRole=client.basement.get_role(858416941185761290) # moderator role
     client.adminRole=client.basement.get_role(858223675949842433) # admin role
     client.breakbbC=client.basement.get_channel(910345635365015613) # break-basementbot channel
     client.wrdAssocC=client.basement.get_channel(859807366219694080) # word association channel
@@ -668,8 +681,9 @@ async def on_message(message:discord.Message):
             error=repr(error)
             await message.channel.send(f"{auth.mention}, I ran that python code and I encountered an error.```\n{error}\n```")
         return
-
-    if message.channel.id not in [client.spamC.id, client.counting.id, client.modLog.id, client.botLog.id, client.wrdAssocC.id, client.lSSC.id] and not msg.startswith("/"):
+    
+    # numerical value is #bot-interactions
+    if message.channel.id not in [858422701165510690, client.spamC.id, client.counting.id, client.modLog.id, client.botLog.id, client.wrdAssocC.id, client.lSSC.id] and not msg.startswith("/"):
         client.Data[auth.id]["msgCount"]+=1
 
 
@@ -689,7 +703,8 @@ class slashCmds:
             )
         ]
     )
-    async def _joindate(ctx:SlashContext,member:discord.Member=None):
+    async def _jd(ctx:SlashContext,member:discord.Member=None):
+        "e"
         if not member: member=ctx.author
         embed=discord.Embed(title=member.display_name,color=member.color)
         embed.add_field(name="Join Date",value=f"```{client.Data[member.id]['joinDate']}```")
@@ -702,6 +717,7 @@ class slashCmds:
         guild_ids=GUILDS
     )
     async def _howmanylines(ctx:SlashContext):
+        "e"
         lastMod=time.strftime("%m/%d/%Y %H:%M:%S", time.localtime(getmtime(client.dir+"/bb.py")))
         with open("bb.py",'r') as f: lines=len(f.readlines())+1
         size=round(getsize("bb.py")/1024,2)
@@ -745,6 +761,7 @@ class slashCmds:
         ]
     )
     async def _dm(ctx:SlashContext,member:discord.Member,message:str):
+        "s"
         try:
             _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
             # main command execution
@@ -783,6 +800,7 @@ class slashCmds:
         ]
     )
     async def _count(ctx:SlashContext,new_number:int):
+        "a"
         client.Data["counting"]=new_number
         client.Data["lastAuth"]=ctx.author_id
         report=discord.Embed(title=f"Current number updated to `{new_number}`!",description=f"Anyone but {ctx.author.mention} can increase the count.",color=discord.Color.blue())
@@ -807,6 +825,7 @@ class slashCmds:
         ]
     )
     async def _disconnect(ctx:SlashContext):
+        "a"
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         save(client.Data) # save data
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
@@ -840,7 +859,7 @@ class slashCmds:
         ]
     )
     async def _poll(ctx:SlashContext,poll:str):
-
+        "s"
         pollChannel=client.get_channel(858156662703128577)
         polled:discord.Message=await pollChannel.send(f"{client.kRole.mention}, "+poll)
 
@@ -881,6 +900,7 @@ class slashCmds:
         ]
     )
     async def _recent(ctx:SlashContext,channel:discord.TextChannel,messages:int=50):
+        "s"
         text=f"LAST {messages} LINES OF {channel.name}\n\n"
         with open(f"{client.dir}/logs/{channel.id}.txt", "r") as f:
             for line in f.readlines()[-messages:]:
@@ -923,6 +943,7 @@ class slashCmds:
         ]
     )
     async def _warn(ctx:SlashContext,member:discord.Member,message:str=None):
+        "s"
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         client.Data[member.id]["warnCount"]+=1
         warnCt=client.Data[member.id]["warnCount"]
@@ -936,7 +957,7 @@ class slashCmds:
         if message:
             try:
                 await member.send(f"Dear, {member.display_name},\n\n{message}\n\n\t\tSincerely, The Basement Staff Team")
-                await client.modLog.send(f"```{_dt} {ctx.author.mention} sent {member.mention}\n\"{message}\"")
+                await client.modLog.send(f"```{_dt} {ctx.author.mention} sent {member.mention}\n\"{message}\"```")
             except discord.errors.Forbidden:
                 await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
                 return
@@ -981,7 +1002,7 @@ class slashCmds:
         ]
     )
     async def _clear(ctx:SlashContext,amount:int=20,contains:str=None,user:discord.Member=None):
-
+        "s"
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
         def isUser(m:discord.Message):
@@ -1020,7 +1041,8 @@ class slashCmds:
             )
         ]
     )
-    async def _msgcount(ctx:SlashContext,member:discord.Member=None):
+    async def _msgs(ctx:SlashContext,member:discord.Member=None):
+        "e"
         if not member: member=ctx.author
         msgC=client.Data[member.id]["msgCount"]
         embed=discord.Embed(title=member.display_name,color=member.color)
@@ -1045,6 +1067,7 @@ class slashCmds:
         ]
     )
     async def _log(ctx:SlashContext):
+        "s"
         online,o,dt_str="",0,datet.now().strftime("%m/%d/%Y %H:%M:%S")
         for kiddie in client.basement.members:
             if kiddie.raw_status!="offline" and kiddie.bot==False:
@@ -1102,7 +1125,7 @@ class slashCmds:
         ]
     )
     async def _retrieve(ctx:SlashContext,channel:discord.TextChannel=None,member:discord.Member=None,other:str=None):
-
+        "s"
         if channel:
             await client.modLog.send(file=discord.File(f"{client.dir}/logs/{channel.id}.txt"))
 
@@ -1160,6 +1183,7 @@ class slashCmds:
         ]
     )
     async def _create(ctx:SlashContext,member:discord.Member,join_time:str=None):
+        "s"
         if not join_time: join_time=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         create(client.Data, member.id, member.name, join_time)
         await ctx.send(f"Sucessfully created memeber {member.display_name}, {member.mention}!")
@@ -1191,6 +1215,7 @@ class slashCmds:
         ]
     )
     async def _announce(ctx:SlashContext,message:str):
+        "s"
         await client.announcementC.send(f"{client.kRole.mention}, {message}") # sends the announcement to the #announcements channel.... mention kiddie role
         await ctx.send(f"Success!")
 
@@ -1207,7 +1232,8 @@ class slashCmds:
             )
         ]
     )
-    async def _stats(ctx:SlashContext,member:discord.Member=None):
+    async def _statistics(ctx:SlashContext,member:discord.Member=None):
+        "e"
         if not member: member=ctx.author
 
         fails:int=client.Data[member.id]["countFails"]
@@ -1236,15 +1262,11 @@ class slashCmds:
                 id=STAFF_ID,
                 id_type=1,
                 permission=True
-            ),
-            create_permission(
-                id=888234155391975435,
-                id_type=1,
-                permission=True
             )
         ]
     )
     async def _reconnect(ctx:SlashContext):
+        "s"
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S")
         save(client.Data)
         await ctx.send(embed=discord.Embed(title="Reconnecting...",color=discord.Color.from_rgb(255,255,51))) # yellow
@@ -1269,6 +1291,7 @@ class slashCmds:
         ]
     )
     async def _snowflake(ctx:SlashContext,object_id:str):
+        "e"
         createTime=discord.Object(int(object_id)).created_at.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
         await ctx.send(embed=discord.Embed(description=f"Object with ID of `{object_id}` was created at\n```{createTime} CST```",color=discord.Color.blue()))
 
@@ -1322,7 +1345,7 @@ class slashCmds:
         ]
     )
     async def _setraw(ctx:SlashContext,member:discord.Member,data_type:str,new_value:str):
-
+        "s"
         try: newValueType=type(client.Data[member.id][data_type])
         except KeyError: newValueType=str
 
@@ -1339,6 +1362,7 @@ class slashCmds:
         guild_ids=GUILDS
     )
     async def _deprecated(ctx:SlashContext):
+        "e"
         deplist=", ".join(DEPRECATED)
         await ctx.send(f"Josh Smith has converted the following commands to slash commands ({len(DEPRECATED)} total): `{deplist}`")
 
@@ -1356,25 +1380,22 @@ class slashCmds:
         ]
     )
     async def _help(ctx:SlashContext, command:str=None):
-        "Will return the message description associated with each command."
-        embed=discord.Embed(
-            title="Help command",
-            description="Each command and it's usage.",
-            color=discord.Color.blue()
-        )
+        "e"
+        embed=discord.Embed(title="Help command",description="Each command and it's usage.",color=discord.Color.blue())
         if command and command[0]!="/": command="/"+command
         if not command or command in ["\n"+cmd for cmd in dir(slashCmds) if not cmd.startswith("__")]:
-            help=parseDesciptions(command)
+            print(ctx.author.top_role.name)
+            if ctx.author.top_role==client.adminRole: maxPerm="a"
+            elif ctx.author.top_role==client.modRole: maxPerm="s"
+            elif ctx.author.top_role==client.kRole: maxPerm="e"
+            else:
+                await ctx.send(embed=discord.Embed(title="Error!",description=f"Please contact <@483000308876967937> in order to resolve this issue."))
+                return
+            help=parseDesciptions(command,maxPerm)
             #map(embed.add_field,help,help.values())
             for cmd in help: embed.add_field(name=f"/{cmd}",value=help[cmd],inline=False)
             await ctx.send(embed=embed)
-        else:
-            embed=discord.Embed(
-                title="Error",
-                description=f"I couldnt find the command: `{command}`",
-                color=discord.Color.red()
-            )
-            await ctx.send(embed=embed)
+        else: await ctx.send(embed=discord.Embed(title="Error",description=f"I couldnt find the command: `{command}`",color=discord.Color.red()))
 
     @slash.slash(
         name="blacklist",
@@ -1413,8 +1434,8 @@ class slashCmds:
             )
         ]
     )
-    async def _blw(ctx:SlashContext,add:str=None,remove:str=None,list:str=None):
-        "All blacklisted word operations stem from this command."
+    async def _blacklist(ctx:SlashContext,add:str=None,remove:str=None,list:str=None):
+        "s"
         if add:
             word=add.lower()
             if word not in client.Data["blw"]:
@@ -1451,7 +1472,8 @@ class slashCmds:
             )
         ]
     )
-    async def _sha(ctx:SlashContext, text:str):
+    async def _hash(ctx:SlashContext, text:str):
+        "e"
         hashed=sha(text.encode()).hexdigest()
         embed=discord.Embed(color=discord.Color.blue())
         embed.add_field(name="SHA256 SUM",value=f"```fix\n{hashed}```")
@@ -1463,6 +1485,7 @@ class slashCmds:
         guild_ids=GUILDS
     )
     async def _birthdays(ctx:SlashContext):
+        "e"
         embed=discord.Embed(color=discord.Color.blue())
         embeds=[embed]
         #bdaylist="\n".join(f"<@{member}>: {client.Data[member]['birthday']}" for member in client.Data if type(member)==int and client.Data[member]['birthday'])
@@ -1517,6 +1540,7 @@ class slashCmds:
         ]
     )
     async def _setbday(ctx:SlashContext,month:int,day:int):
+        "e"
         if not 1<=day<=31:
             #error
             embed=discord.Embed(
@@ -1562,6 +1586,7 @@ class slashCmds:
         ]
     )
     async def _modinfo(ctx:SlashContext,member:discord.Member):
+        "s"
         if member.bot: await ctx.send("Why? Why would you ignore the command description...? No bots!!!")
         else:
             embed=discord.Embed(title=member.display_name,color=discord.Color.blue())
@@ -1595,6 +1620,7 @@ class slashCmds:
     ]
 )
 async def _test(ctx:SlashContext):
+    "s"
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
     print(f"{_dt} responed to {ctx.author.name} via /test command.")
@@ -1618,16 +1644,11 @@ async def _test(ctx:SlashContext):
             id=STAFF_ID,
             id_type=1,
             permission=True
-        ),
-        create_permission(
-            id=888234155391975435,
-            id_type=1,
-            permission=True
         )
     ]
 )
-async def _embtest(ctx:SlashContext):
-    "Testing command for Disocrd embeds."
+async def _testembed(ctx:SlashContext):
+    "s"
     embed=discord.Embed(
         title="Test title",
         description="a description",
