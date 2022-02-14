@@ -2,6 +2,7 @@
 # Documentation:    https://discordpy.readthedocs.io/en/latest/api.html
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
+from pydoc import describe
 from timeit import default_timer as dt
 st=dt() # start of all code
 
@@ -239,6 +240,8 @@ async def on_ready(): # do all this on startup...
     client.announcementC=client.basement.get_channel(858156757788524554)
     client.spamC=client.basement.get_channel(942576682395660358) # spam channel
     client.botInteractC=client.basement.get_channel(858422701165510690) # bot-interactions channel
+    client.noahb=client.basement.get_member(806307221171994624) # noah
+    client.josh=client.basement.get_member(483000308876967937) # josh smith
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
@@ -280,6 +283,9 @@ async def on_ready(): # do all this on startup...
     # main loop
     while True:
         now=datet.now()
+        ##################################
+        ######### ROUTINE CASUAL #########
+        ##################################
         # handles good morning
         if client.Data["GMday"]!=now.day and [now.hour,now.minute]==client.Data["randTime"]:
             await client.basementC.send(f"Good morning guys...")
@@ -295,6 +301,10 @@ async def on_ready(): # do all this on startup...
         # handles good night
         if (now.hour,now.minute,now.second)==(23,59,59) and (now.month,now.day)!=(12,31): # will say "Goodnight, y'all" EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
+        
+        ##################################
+        ####### ROUTINE MODERATION #######
+        ##################################
         # executes "/log" every hour
         if now.minute==0 and 0<now.second<=10:
             online,o,dt_str="",0,now.strftime("%m/%d/%Y %H:%M:%S")
@@ -304,16 +314,6 @@ async def on_ready(): # do all this on startup...
                     o+=1
             await client.modLog.send(f"This was an auto-initiated process. Use `/log` to see this list.\n{o} online members at `{dt_str}`:```\n{online}```") # send to #modlogging
             await aio.sleep(10)
-        # handles happy new year
-        if (now.month,now.day,now.hour,now.minute)==(12,31,23,59):
-            if now.second==0:
-                await client.basementC.send("Get ready for the new year countdown!")
-            cd=""
-            if now.second>10:
-                cd=f"***{60-now.second}***"
-            else:
-                cd=f"{60-now.second}"
-            await client.basementC.send(cd)
         # handles bi-hourly saves
         if now.second==0 and not now.minute%30: save(client.Data)
         # handles spam purge
@@ -331,7 +331,31 @@ async def on_ready(): # do all this on startup...
             await spamC.purge(limit=8192,before=deleteTime)
             await client.modLog.send(f"```{_dt} purged #spam messages.```")
 
-        # dont dos our bot, keep it slow but not too slow
+        #################################
+        ######## CALENDAR EVENTS ########
+        #################################
+        # handles happy new year
+        if (now.month,now.day,now.hour,now.minute)==(12,31,23,59):
+            if now.second==0:
+                await client.basementC.send("Get ready for the new year countdown!")
+            cd=""
+            if now.second>10:
+                cd=f"***{60-now.second}***"
+            else:
+                cd=f"{60-now.second}"
+            await client.basementC.send(cd)
+        # handles basement anniversary
+        if (now.month,now.day,now.hour,now.minute,now.second)==(6,25,19,24,52):
+            happyAnniv=discord.Embed(description=f"Happy Birthday, Basement! Here's to another year of awesomeness!\nOh, and the next time you see {client.noahb.mention}, tell him how much you like The Basement! (He'll blush haha)",color=discord.Color.purple())
+            happyAnniv.set_author(name="HAPPY BASEMENT ANNIVERSARY!!!",icon_url="https://test.thebasement.group/images/tada.png")
+            await client.basementC.send(embed=happyAnniv)
+        # handles valentine's day
+        if (now.month,now.day,now.hour,now.minute,now.second)==(2,14,12,1,0):
+            valintDay=discord.Embed(description="Have a great valintines day, whether you're a single pringle, or a hopeless romantic! Just know that someone out there loves you very very much ❤️",color=discord.Color.red())
+            valintDay.set_author(name="Happy Valentine's Day!",icon_url="https://test.thebasement.group/images/heart.png")
+            await client.basementC.send(embed=valintDay)
+
+        # dont DoS our bot, keep it slow but not too slow
         await aio.sleep(1)
 
 @client.event
@@ -808,10 +832,10 @@ class slashCmds:
             # log
             await client.modLog.send(f"```{_dt} - {ctx.author.display_name} messaged {member.display_name}:\n\"{message}\"```")
             # report success.
-            await ctx.send(embed=discord.Embed(title="Success!",description=f"Sent {member.display_name} a direct message!",color=discord.Color.green()))
+            await ctx.send(embed=discord.Embed(title="Success!",description=f"Sent {member.mention} a direct message!",color=discord.Color.green()))
         
         except discord.errors.Forbidden as error:
-            erMsg=discord.Embed(title="Error!",description=f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red())
+            erMsg=discord.Embed(title="Error!",description=f"Couldn't directly message {member.mention}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red())
             erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
             await ctx.send(embed=erMsg)
         except AttributeError as error:
@@ -822,6 +846,7 @@ class slashCmds:
             erMsg=discord.Embed(title="Error!",description=f"The client received a `404 not found error`. This sometimes happens, wait a minute and then try again.\nIf the problem persists, contact <@483000308876967937>.",color=discord.Color.red())
             erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
             await ctx.send(embed=erMsg)
+
     @slash.slash(
         name="count",
         description="Sets the count to a specific number.",
@@ -1000,15 +1025,19 @@ class slashCmds:
             if warnCt<9: recc="muting"
             else: recc="banning"
 
-            await client.modLog.send(f"{client.modRole.mention}s, {member.display_name}'s warn count is `{warnCt}`! I'd recommend {recc} them.")
+            await client.modLog.send(f"{client.modRole.mention}s, {member.mention}'s warn count is `{warnCt}`! I'd recommend {recc} them.")
 
         if message:
             try:
                 await member.send(f"Dear, {member.display_name},\n\n{message}\n\n\t\tSincerely, The Basement Staff Team")
                 await client.modLog.send(f"```{_dt} {ctx.author.mention} sent {member.mention}\n\"{message}\"```")
-            except discord.errors.Forbidden:
-                await ctx.send(f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...")
-                return
+            except discord.errors.Forbidden as error:
+                erMsg=discord.Embed(title="Error!",description=f"Couldn't directly message {member.mention}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red())
+                erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
+            except discord.errors.NotFound as error:
+                erMsg=discord.Embed(title="Error!",description=f"The client received a `404 not found error`. This sometimes happens, wait a minute and then try again.\nIf the problem persists, contact <@483000308876967937>.",color=discord.Color.red())
+                erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
+                await ctx.send(embed=erMsg)
 
         await ctx.send(embed=discord.Embed(title="Success!",description=f"{member.mention}'s warn count: `{warnCt}`",color=discord.Color.green()))
 
@@ -1683,9 +1712,7 @@ async def _test(ctx:SlashContext):
     daignostHeader="="*8+" DIAGNOSTICS REPORT "+"="*8
     report="\n"+daignostHeader+f"""\nMain data size: {getsizeof(client.Data)}b\tSlash Size: {getsizeof(slash)}b"""
     print(report)
-    fname="_warn"
-    print(getattr(slashCmds,fname).__doc__)
-    await ctx.send(f"Sucessfully tested, {ctx.author.mention}!")
+    await ctx.send(embed=discord.Embed(title="Success!",description=f"All functions are properly working, {ctx.author.mention}",color=discord.Color.green()))
 
 print(f"Loaded entire code in {dt()-st}s!")
 client.run(token)
