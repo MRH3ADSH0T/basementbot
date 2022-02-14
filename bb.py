@@ -109,16 +109,6 @@ def load(): # loads member data
         if not i.isdigit(): new[i]=r[i]
     return new
 
-def blSave(blist): # saves blacklisted words to hard storage
-    direct=dirname(__file__)
-    with open(f"{direct}/blw.txt", "w") as f:
-        a="\n".join(i for i in blist)
-        print(a, file=f)
-
-def blLoad(): # loads blacklisted words
-    with open(f"{dirname(__file__)}/blw.txt", "r") as f:
-        return [i.strip() for i in f.readlines()]
-
 def isListed(m,list_): return m.author in list_
 
 def toDigits(num:str) -> list[int]:
@@ -736,7 +726,6 @@ async def on_message(message:discord.Message):
     if message.channel.id not in [858422701165510690, client.spamC.id, client.counting.id, client.modLog.id, client.botLog.id, client.wrdAssocC.id, client.lSSC.id] and not msg.startswith("/"):
         client.Data[auth.id]["msgCount"]+=1
 
-
 ####################################################################################################
 
 class slashCmds:
@@ -821,9 +810,18 @@ class slashCmds:
             # report success.
             await ctx.send(embed=discord.Embed(title="Success!",description=f"Sent {member.display_name} a direct message!",color=discord.Color.green()))
         
-        except discord.errors.Forbidden:    await ctx.send(embed=discord.Embed(title="Error!",description=f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red()))
-        except AttributeError:              await ctx.send(embed=discord.Embed(title="Error!",description=f"Were you trying to DM me? You can't DM me...",color=discord.Color.red()))
-
+        except discord.errors.Forbidden as error:
+            erMsg=discord.Embed(title="Error!",description=f"Couldn't directly message {member.display_name}. Maybe they have \"accept direct messages\" off...",color=discord.Color.red())
+            erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
+            await ctx.send(embed=erMsg)
+        except AttributeError as error:
+            erMsg=discord.Embed(title="Error!",description=f"Were you trying to DM me? You can't DM me...",color=discord.Color.red())
+            erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
+            await ctx.send(embed=erMsg)
+        except discord.errors.NotFound as error:
+            erMsg=discord.Embed(title="Error!",description=f"The client received a `404 not found error`. This sometimes happens, wait a minute and then try again.\nIf the problem persists, contact <@483000308876967937>.",color=discord.Color.red())
+            erMsg.add_field(name="Traceback",value=f"```{repr(error)}```")
+            await ctx.send(embed=erMsg)
     @slash.slash(
         name="count",
         description="Sets the count to a specific number.",
@@ -959,7 +957,7 @@ class slashCmds:
             print(text, file=f)
         await client.modLog.send(file=discord.File(f"{client.dir}/logs/temp.txt"))
 
-        await ctx.send(f"{ctx.author.mention}, the requested channel(s)'s recent messages have been sent to {client.modLog.mention}!")
+        await ctx.send(embed=discord.Embed(title="Success!",description=f"The last {messages} lines of {channel.mention} have been sent to {client.modLog.mention}!",color=discord.Color.green()))
 
     @slash.slash(
         name="warn",
@@ -1688,54 +1686,6 @@ async def _test(ctx:SlashContext):
     fname="_warn"
     print(getattr(slashCmds,fname).__doc__)
     await ctx.send(f"Sucessfully tested, {ctx.author.mention}!")
-
-@slash.slash(
-    name="testembed",
-    description="Testing command for Disocrd embeds.",
-    guild_ids=GUILDS,
-    default_permission=False
-)
-@slash.permission(
-    guild_id=GUILDS[0],
-    permissions=[
-        create_permission(
-            id=STAFF_ID,
-            id_type=1,
-            permission=True
-        )
-    ]
-)
-async def _testembed(ctx:SlashContext):
-    "s"
-    embed=discord.Embed(
-        title="Test title",
-        description="a description",
-        color=discord.Color.blue()
-    )
-    embed.set_author(name="This is the author")
-    embed.add_field(
-        name="test field 1",
-        value="```test field value 1```",
-        inline=True
-    )
-    embed.add_field(
-        name="test field 2",
-        value="```test field value 2```",
-        inline=True
-    )
-    embed.add_field(name="\u200b",value="\u200b",inline=False)
-    embed.add_field(
-        name="test field 3",
-        value="```test field value 3```",
-        inline=True
-    )
-    embed.add_field(
-        name="test field 4",
-        value="```test field value 4```",
-        inline=True
-    )
-    #embed.set_image(url="https://cdn.discordapp.com/icons/858065227722522644/e708a44944ffd06fd9745d495f9c16c9.webp")
-    await ctx.send(embed=embed)
 
 print(f"Loaded entire code in {dt()-st}s!")
 client.run(token)
