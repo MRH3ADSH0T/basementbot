@@ -1355,7 +1355,9 @@ class slashCmds:
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S")
         save(client.Data)
         await ctx.send(embed=discord.Embed(title="Reconnecting...",color=discord.Color.from_rgb(255,255,51))) # yellow
-        await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
+        await client.modLog.send(f"```{_dt} {ctx.author.name} is reconnecting the bot.```")
+        for voiceClient in client.voice_clients:
+            await voiceClient.disconnect()
         await client.close()
         del client.Data
         print("\nReconnecting...")
@@ -1679,6 +1681,50 @@ class slashCmds:
                 if attr not in ["countHigh","countFails","isMuted","birthday"]:
                     embed.add_field(name=convertAttr(attr),value=f"```{client.Data[member.id][attr]}```")#,inline=False)
             await ctx.send(embed=embed)
+
+    @slash.slash(
+        name="joinvc",
+        description="Will join the VC you are in.",
+        guild_ids=GUILDS
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _joinvc(ctx:SlashContext):
+        "a"
+        authorVC:discord.VoiceChannel=ctx.author.voice.channel
+        await authorVC.connect()
+        await ctx.send(embed=discord.Embed(title="Success!",description="I'm here!",color=discord.Color.green()))
+
+    @slash.slash(
+        name="leavevc",
+        description="Leaves all(?) VC in The Basement.",
+        guild_ids=GUILDS
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _leavevc(ctx:SlashContext):
+        "a"
+        await ctx.voice_client.disconnect()
+        await ctx.send(embed=discord.Embed(title="Good bye!",description="See you another time! 👋",color=discord.Color.blue()))
+    
 
 ####################################################################################################
 
