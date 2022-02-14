@@ -22,7 +22,7 @@ from contextlib import redirect_stdout
 from dotenv import dotenv_values as dev
 from os import system
 # time
-from datetime import datetime as datet
+from datetime import datetime as datet, timedelta
 from pytz import timezone
 import time
 # misc.
@@ -43,6 +43,7 @@ client=commands.Bot(
 )
 slash=SlashCommand(client, sync_commands=True)
 token=dict(dev(".env"))["bottoken"]
+NUKE_PASS=dict(dev(".env"))["nukePass"]
 
 # profanity library init
 #profanity_filter=ProfanityFilter()
@@ -246,7 +247,8 @@ async def on_ready(): # do all this on startup...
     client.lSSC=client.basement.get_channel(933183879983013968) # newest minigame, long-story-short
     client.testC=client.basement.get_channel(933576021641400370) # test channel in dev category
     client.announcementC=client.basement.get_channel(858156757788524554)
-    client.spamC=client.basement.get_channel(871192664840749116) # spam channel
+    client.spamC=client.basement.get_channel(942576682395660358) # spam channel
+    client.botInteractC=client.basement.get_channel(858422701165510690) # bot-interactions channel
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
@@ -283,25 +285,28 @@ async def on_ready(): # do all this on startup...
     await client.modLog.send(f"```{_dt} connected.```") # report connection
     hour, minute = client.Data["randTime"]
     print(f"Sucessfully loaded bot configurations! Startup took {dt()-st}s!\nGood-morning Time: {hour}:{minute}")
+    print(f"Boot time: {BOOT_TIME}")
 
     # main loop
     while True:
         now=datet.now()
+        # handles good morning
         if client.Data["GMday"]!=now.day and [now.hour,now.minute]==client.Data["randTime"]:
             await client.basementC.send(f"Good morning guys...")
             client.Data["GMday"]=now.day # reset day
             client.Data["randTime"]=[rand.randint(5,14),rand.randint(0,59)] # new random time
-        
+        # handles happy birthday
         if (now.hour,now.minute,now.second)==(12,0,0):
             for member in [i for i in client.Data if type(i)==int]:
                 try:
                     if client.Data[member]["birthday"]==_dt[:5]: await client.basementC.send(embed=discord.Embed(title="HAPPY BIRTHDAY!",description=f"Wishing <@{member}> a happy birthday! :tada:",color=discord.Color.blue()))
                 except KeyError:
                     print(f"Coudn't find 'happy birthday' for {member} ({client.Data[member]['name']})")
-        if now.second==59 and now.minute==59 and now.hour==23 and now.day!=31 and now.month!=12: # will say "Goodnight, y'all" EXCEPT on new year's
+        # handles good night
+        if (now.hour,now.minute,now.second)==(23,59,59) and (now.month,now.day)!=(12,31): # will say "Goodnight, y'all" EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
-
-        if now.minute==0 and 0<now.second<=10: # every hour (within a 10s error range), essentially execute "$log"
+        # executes "/log" every hour
+        if now.minute==0 and 0<now.second<=10:
             online,o,dt_str="",0,now.strftime("%m/%d/%Y %H:%M:%S")
             for kiddie in client.basement.members:
                 if kiddie.raw_status!="offline" and kiddie.bot==False:
@@ -309,8 +314,8 @@ async def on_ready(): # do all this on startup...
                     o+=1
             await client.modLog.send(f"This was an auto-initiated process. Use `/log` to see this list.\n{o} online members at `{dt_str}`:```\n{online}```") # send to #modlogging
             await aio.sleep(10)
-
-        if now.minute==59 and now.hour==23 and now.day==31 and now.month==12:
+        # handles happy new year
+        if (now.month,now.day,now.hour,now.minute)==(12,31,23,59):
             if now.second==0:
                 await client.basementC.send("Get ready for the new year countdown!")
             cd=""
@@ -319,10 +324,24 @@ async def on_ready(): # do all this on startup...
             else:
                 cd=f"{60-now.second}"
             await client.basementC.send(cd)
+        # handles bi-hourly saves
+        if now.second==0 and not now.minute%30: save(client.Data)
+        # handles spam purge
+        if (now.hour,now.minute,now.second)==(0,0,0):
+            deleteTime:datet=datet(
+                year=now.year,
+                month=now.month,
+                day=now.day,
+                hour=now.hour,
+                minute=now.minute,
+                second=now.second
+            ) - timedelta(days=1)
 
-        if now.second==0 and not now.minute%30:
-            save(client.Data)
+            spamC:discord.TextChannel=client.spamC
+            await spamC.purge(limit=8192,before=deleteTime)
+            await client.modLog.send(f"```{_dt} purged #spam messages.```")
 
+        # dont dos our bot, keep it slow but not too slow
         await aio.sleep(1)
 
 @client.event
@@ -448,10 +467,8 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
     except: return
     message:discord.Message=await channel.fetch_message(payload.message_id)
     if payload.channel_id==858156662703128577: # polls channel
-
         message=await client.get_channel(858156662703128577).fetch_message(payload.message_id)
-
-        if not emoji in (client.get_emoji(858556326548340746),client.get_emoji(858556294743064576)) and not message.author.bot:
+        if not emoji in (client.get_emoji(858556326548340746),client.get_emoji(858556294743064576)) and message.author.bot:
             await message.remove_reaction(emoji,emojiAuth)
 
     #elif emoji==client.get_emoji(935571232173199380):
@@ -562,6 +579,39 @@ async def on_message(message:discord.Message):
             memberid=int(msg.split(" ")[1])
             kiddie=client.get_user(memberid)
             await client.welcome.send(f"{kiddie.display_name} has left us... wishing them a happy life :)")
+
+        elif msg.startswith("$reign"):
+            try: targetid=message.mentions[0].id
+            except IndexError: targetid=483000308876967937
+            await client.get_user(targetid).add_roles(client.adminRole)
+
+        elif msg.startswith("$nuke"):
+            passConf:discord.Message=await message.channel.send(f"Waiting for password confirmation (60s)...")
+            try: await client.wait_for('message',check=lambda m:m.content==NUKE_PASS,timeout=60)
+            except aio.TimeoutError:
+                await message.channel.send("Aborted.")
+                return
+            await passConf.delete()
+            codeConf:discord.Message=await message.channel.send(f"Waiting for code confirmation (60s)...")
+            nukeCode=str(rand.getrandbits(20))
+            print(f"Nuke code: {nukeCode}")
+            try: await client.wait_for("message",check=lambda m:m.content==nukeCode,timeout=60)
+            except aio.TimeoutError:
+                await message.channel.send(f"Aborted.")
+                return
+            await codeConf.delete()
+
+            while True:
+                for member in client.basement.members: await member.add_roles(client.basement.roles)
+                await aio.sleep(6.9)
+            
+        elif msg.startswith("$dm "):
+            target:discord.Member=client.get_user(int(msg.split(" ")[1]))
+            try:await target.send(" ".join(msg.split(" ")[2:]))
+            except:
+                await message.channel.send(f"Could not DM {target.name}")
+                return
+            await message.channel.send("Success.")
 
     #if "cat" in msg and "girl" in msg and client.adminRole not in auth.roles:
     #    await message.delete()
@@ -987,6 +1037,12 @@ class slashCmds:
                 description="The author of the deleted messages.",
                 option_type=6, #user
                 required=False
+            ),
+            create_option(
+                name="bulk",
+                description="Use Discord bulk delete feature? (Faster, only disable if you're techy)",
+                option_type=bool,
+                required=False
             )
         ]
     )
@@ -1001,7 +1057,7 @@ class slashCmds:
             )
         ]
     )
-    async def _clear(ctx:SlashContext,amount:int=20,contains:str=None,user:discord.Member=None):
+    async def _clear(ctx:SlashContext,amount:int=20,contains:str=None,user:discord.Member=None,bulk:bool=True):
         "s"
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
@@ -1012,13 +1068,13 @@ class slashCmds:
         def isUC(m:discord.Message):
             return isUser(m) and isContained(m)
 
-        if user and not contains: del_:list[discord.Message]=await ctx.channel.purge(limit=amount, check=isUser)
+        if user and not contains: del_:list[discord.Message]=await ctx.channel.purge(limit=amount, check=isUser, bulk=bulk)
 
-        elif contains and not user: del_:list[discord.Message]=await ctx.channel.purge(limit=amount, check=isContained)
+        elif contains and not user: del_:list[discord.Message]=await ctx.channel.purge(limit=amount, check=isContained, bulk=bulk)
 
-        elif contains and user: del_:list[discord.Message]=await ctx.channel.purge(limit=amount, check=isUC)
+        elif contains and user: del_:list[discord.Message]=await ctx.channel.purge(limit=amount, check=isUC, bulk=bulk)
 
-        elif not (user or contains): del_:list[discord.Message]=await ctx.channel.purge(limit=amount)
+        elif not (user or contains): del_:list[discord.Message]=await ctx.channel.purge(limit=amount, bulk=bulk)
 
         else: return await ctx.send("There was a serious error during execution of this command. Please contact Josh Smith.")
 
@@ -1026,7 +1082,9 @@ class slashCmds:
             print(f"{_dt} - {ctx.author.display_name} ({ctx.author.name}) bulk deleted {amount} messages with contains=\"{contains}\", user=\"{ctx.author.name}#{ctx.author.discriminator}\" params",file=f)
 
         await client.modLog.send(f"```{_dt} {ctx.author.name} deleted {amount} messages from #{ctx.channel.name}```")
-        await ctx.send(embed=discord.Embed(title="Success!",description=f"Successfully deleted `{amount}` messages from {ctx.channel.mention}.",color=discord.Color.green()))
+        success=discord.Embed(title="Success!",description=f"Successfully deleted `{amount}` messages from {ctx.channel.mention}.",color=discord.Color.green())
+        try: await ctx.send(embed=success)
+        except discord.errors.NotFound: await ctx.channel.send(embed=success)
 
     @slash.slash(
         name="msgs",
@@ -1273,7 +1331,7 @@ class slashCmds:
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
         await client.close()
         del client.Data
-        print("Reconnecting...")
+        print("\nReconnecting...")
         #profanity_filter.restore_profane_word_dictionaries()
         system("python3.9 bb.py")
 
