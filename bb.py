@@ -2,7 +2,6 @@
 # Documentation:    https://discordpy.readthedocs.io/en/latest/api.html
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
-from pydoc import describe
 from timeit import default_timer as dt
 st=dt() # start of all code
 
@@ -32,6 +31,7 @@ from hashlib import sha256 as sha
 from io import StringIO
 #from profanity_filter import ProfanityFilter
 #from profanity_check import predict as pf_predict
+# add something about pip install discord.py[voice]
 
 BOOT_TIME=datet.now().strftime("%m/%d/%Y %H:%M:%S")
 
@@ -269,7 +269,6 @@ async def on_ready(): # do all this on startup...
             print(f"Created joinDate entry for \"{kiddie.display_name}\"")
             joinDate:datet=kiddie.joined_at
             client.Data[kiddie.id]["joinDate"]=joinDate.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
-
     # status
     notBots=[member for member in client.basement.members if not member.bot] # i don't know why, but the bot is always one less than the current count...
     await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="http://basement.minecraftr.us"))
@@ -295,7 +294,9 @@ async def on_ready(): # do all this on startup...
         if (now.hour,now.minute,now.second)==(12,0,0):
             for member in [i for i in client.Data if type(i)==int]:
                 try:
-                    if client.Data[member]["birthday"]==_dt[:5]: await client.basementC.send(embed=discord.Embed(title="HAPPY BIRTHDAY!",description=f"Wishing <@{member}> a happy birthday! :tada:",color=discord.Color.blue()))
+                    if client.Data[member]["birthday"]==_dt[:5]:
+                        member:discord.Member=client.basement.get_user(member)
+                        await client.basementC.send(embed=discord.Embed(title="HAPPY BIRTHDAY!",description=f"Wishing **{member.display_name}** a happy birthday! :tada:",color=discord.Color.blue()))
                 except KeyError:
                     print(f"Coudn't find 'happy birthday' for {member} ({client.Data[member]['name']})")
         # handles good night
@@ -475,15 +476,25 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
 
 @client.event
 async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
-    emoji:discord.PartialEmoji=payload.emoji
-    emojiAuth:discord.Member=client.get_user(payload.user_id)
+    emoji:discord.partial_emoji.PartialEmoji=payload.emoji
+    emojiAuth:discord.Member=client.basement.get_member(payload.user_id)
     try: channel:discord.TextChannel=await client.fetch_channel(payload.channel_id)
     except: return
     message:discord.Message=await channel.fetch_message(payload.message_id)
+    
     if payload.channel_id==858156662703128577: # polls channel
-        message=await client.get_channel(858156662703128577).fetch_message(payload.message_id)
-        if not emoji in (client.get_emoji(858556326548340746),client.get_emoji(858556294743064576)) and message.author.bot:
+        upEmoji:discord.Emoji=client.get_emoji(858556326548340746)
+        downEmoji:discord.Emoji=client.get_emoji(858556294743064576)
+        if not emoji in (upEmoji,downEmoji) and message.author==client.user:
             await message.remove_reaction(emoji,emojiAuth)
+            return
+        ups:discord.Reaction=list(filter(lambda x: x.emoji==upEmoji, message.reactions))[0]
+        downs:discord.Reaction=list(filter(lambda x: x.emoji==downEmoji, message.reactions))[0]
+        downUsers=await downs.users().flatten()
+        async for upAuthor in ups.users():
+            if upAuthor in downUsers:
+                await message.remove_reaction(upEmoji,upAuthor)
+                await message.remove_reaction(downEmoji,upAuthor)
 
     #elif emoji==client.get_emoji(935571232173199380):
     #    channel:discord.TextChannel=client.get_channel(payload.channel_id)
@@ -493,6 +504,27 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
         await message.remove_reaction(emoji,emojiAuth)
         embed=discord.Embed(title="Red Flag!",description=f"{emojiAuth.mention} red flagged [this message]({message.jump_url})",color=discord.Color.red())
         await client.modLog.send(embed=embed)
+
+    # will add the specified reaction role, otherwise, removes the emoji.
+    if payload.channel_id==client.Data["RR"]["channel"] and not emojiAuth.bot:
+        if emoji.name in client.Data["RR"]["table"]:
+            role=client.basement.get_role(client.Data["RR"]["table"][emoji.name])
+            await emojiAuth.add_roles(role)
+        else: await message.remove_reaction(emoji,emojiAuth)
+
+@client.event
+async def on_raw_reaction_remove(payload:discord.RawReactionActionEvent):
+    emoji:discord.partial_emoji.PartialEmoji=payload.emoji
+    emojiAuth:discord.Member=client.basement.get_member(payload.user_id)
+    try: channel:discord.TextChannel=await client.fetch_channel(payload.channel_id)
+    except: return
+    message:discord.Message=await channel.fetch_message(payload.message_id)
+
+    if payload.channel_id==client.Data["RR"]["channel"] and not emojiAuth.bot:
+        if emoji.name in client.Data["RR"]["table"]:
+            role=client.basement.get_role(client.Data["RR"]["table"][emoji.name])
+            await emojiAuth.remove_roles(role)
+        else: await message.remove_reaction(emoji,emojiAuth)
 
 @client.event
 async def on_message(message:discord.Message):
@@ -984,6 +1016,9 @@ class slashCmds:
 
         await ctx.send(embed=discord.Embed(title="Success!",description=f"The last {messages} lines of {channel.mention} have been sent to {client.modLog.mention}!",color=discord.Color.green()))
 
+    # @_warn()
+    # add What they were warned for and show their username and avatar, instead of just a ping.
+
     @slash.slash(
         name="warn",
         description="If the warnings are a multiple of three, it will suggest a mute. 9 warnings suggests a ban.",
@@ -1379,7 +1414,7 @@ class slashCmds:
     )
     async def _snowflake(ctx:SlashContext,object_id:str):
         "e"
-        createTime=discord.Object(int(object_id)).created_at.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
+        createTime=(discord.Object(int(object_id)).created_at-timedelta(hours=6)).strftime("%m/%d/%Y %H:%M:%S")
         await ctx.send(embed=discord.Embed(description=f"Object with ID of `{object_id}` was created at\n```{createTime} CST```",color=discord.Color.blue()))
 
     @slash.slash(
@@ -1471,7 +1506,6 @@ class slashCmds:
         embed=discord.Embed(title="Help command",description="Each command and it's usage.",color=discord.Color.blue())
         if command and command[0]!="/": command="/"+command
         if not command or command in ["\n"+cmd for cmd in dir(slashCmds) if not cmd.startswith("__")]:
-            print(ctx.author.top_role.name)
             if ctx.author.top_role==client.adminRole: maxPerm="a"
             elif ctx.author.top_role==client.modRole: maxPerm="s"
             elif ctx.author.top_role==client.kRole: maxPerm="e"
@@ -1685,7 +1719,8 @@ class slashCmds:
     @slash.slash(
         name="joinvc",
         description="Will join the VC you are in.",
-        guild_ids=GUILDS
+        guild_ids=GUILDS,
+        default_permission=False
     )
     # only @admins can use this command
     @slash.permission(
@@ -1707,7 +1742,8 @@ class slashCmds:
     @slash.slash(
         name="leavevc",
         description="Leaves all(?) VC in The Basement.",
-        guild_ids=GUILDS
+        guild_ids=GUILDS,
+        default_permission=False
     )
     # only @admins can use this command
     @slash.permission(
@@ -1724,7 +1760,119 @@ class slashCmds:
         "a"
         await ctx.voice_client.disconnect()
         await ctx.send(embed=discord.Embed(title="Good bye!",description="See you another time! 👋",color=discord.Color.blue()))
-    
+
+    @slash.slash(
+        name="reactionroles",
+        description="Displays the reaction roles running configuration.",
+        guild_ids=GUILDS,
+        default_permission=False
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _reactionroles(ctx:SlashContext):
+        "a"
+        roles=discord.Embed(color=discord.Color.blue())
+        roles.add_field(name="Reaction role list:",value="\n".join(f"{emoji} - {client.basement.get_role(roleID).mention}" for emoji,roleID in zip(client.Data["RR"]["table"],client.Data["RR"]["table"].values())))
+        await ctx.send(embed=roles)
+
+    @slash.slash(
+        name="setrole",
+        description="Sets an emoji to point to a reaction role.",
+        guild_ids=GUILDS,
+        default_permission=False,
+        options=[
+            create_option(
+                name="emoji",
+                description="Associates an emoji with a role.",
+                option_type=str,
+                required=False
+            ),
+            create_option(
+                name="role",
+                description="A role given out to whoever reacts to the reaction role message with the specified emoji",
+                option_type=8, #role
+                required=False
+            ),
+            create_option(
+                name="channel",
+                description="Only one message is allowed in the reaction channel.",
+                option_type=7, #channel
+                required=False
+            )
+        ]
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _setrole(ctx:SlashContext,emoji:str=None,role:discord.Role=None,channel:discord.TextChannel=None):
+        "a"
+        successMsg=""
+        color=discord.Color.green()
+        if channel:
+            # we use the message id because json would butcher passing in an actual message.
+            client.Data["RR"]["channel"]=channel.id
+            successMsg+=f"The reaction channel has been set to {channel.mention}"
+        if emoji and role:
+            if successMsg: successMsg+="\n"
+            successMsg+=f"The {emoji} emoji has been set to {role.mention}."
+            try: client.Data["RR"]["table"].pop(emoji)
+            except KeyError: pass
+            client.Data["RR"]["table"][emoji]=role.id
+            color=role.color
+        if not (channel or (emoji and role)):
+            await ctx.send(embed=discord.Embed(title="Error!",description="You didn't include the correct parameters!",color=discord.Color.red()))
+        await ctx.send(embed=discord.Embed(title="Success!",description=successMsg,color=color))
+
+    @slash.slash(
+        name="removerole",
+        description="Will completely remove and unassociate the role from it's emoji.",
+        guild_ids=GUILDS,
+        default_permission=False,
+        options=[
+            create_option(
+                name="emoji",
+                description="An emoji",
+                option_type=str,
+                required=True
+            )
+        ]
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _removerole(ctx:SlashContext,emoji:str):
+        "a"
+        try:
+            roleID:int=client.Data["RR"]["table"].pop(emoji)
+            role:discord.Role=client.basement.get_role(roleID)
+            await ctx.send(embed=discord.Embed(title="Success!",description=f"Removed {emoji} {role.mention}",color=role.color))
+        except KeyError:
+            await ctx.send(embed=discord.Embed(title="Error!",description=f"I couldn't find a role associated with {emoji}!",color=discord.Color.red()))
 
 ####################################################################################################
 
