@@ -3,6 +3,8 @@
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
 from timeit import default_timer as dt
+
+from pexpect import ExceptionPexpect
 st=dt() # start of all code
 
 #import warnings
@@ -21,6 +23,10 @@ from os.path import isfile, dirname, getsize, getmtime
 from contextlib import redirect_stdout
 from dotenv import dotenv_values as dev
 from os import system
+import psutil
+import socket
+import threading
+from sys import stdout
 # time
 from datetime import datetime as datet, timedelta
 from pytz import timezone
@@ -35,6 +41,7 @@ from io import StringIO
 
 BOOT_TIME=datet.now().strftime("%m/%d/%Y %H:%M:%S")
 
+
 # initialize discord API
 client=commands.Bot(
     command_prefix="",
@@ -45,6 +52,20 @@ client=commands.Bot(
 slash=SlashCommand(client, sync_commands=True)
 token=dict(dev(".env"))["bottoken"]
 NUKE_PASS=dict(dev(".env"))["nukePass"]
+MONTHS={
+    1:'January',
+    2:'February',
+    3:'March',
+    4:'April',
+    5:'May',
+    6:'June',
+    7:'July',
+    8:'August',
+    9:'September',
+    10:'October',
+    11:'November',
+    12:'December'
+}
 
 # profanity library init
 #profanity_filter=ProfanityFilter()
@@ -64,7 +85,7 @@ DEPRECATED=[
     "announce",
     "poll",
     "create",
-    "stats", 
+    "stats",
     "snow",
     "msgs",
     "del",
@@ -97,7 +118,7 @@ def create(data:dict[int,dict[str,]], id_:int, name:str, time:str): # creates a 
                "countHigh":0,
                "countFails":0,
                "joinDate":time,
-               "birthday":""}               
+               "birthday":""}
 
 def save(dictionary): # saves member data in dictionary to hard storage
     direct=dirname(__file__)
@@ -211,8 +232,183 @@ def scanMessage(phrase:str, string:str) -> bool:
     else:
         return False
 
+def properOrdinal(number:str)->str:
+    if number.endswith("0") or number.endswith("4") or number.endswith("5") or number.endswith("6") or number.endswith("7") or number.endswith("8") or number.endswith("9"):
+        return number+"th"
+    elif number[1]=="1":
+        return number+"th"
+    elif number.endswith("1"):
+        return number+"st"
+    elif number.endswith("2"):
+        return number+"nd"
+    elif number.endswith("3"):
+        return number+"rd"
+    else: raise ValueError("AAAAAAAAAAAAAAAAAAAAAAAA")
+
+def correctBday(bday:str)->str:
+    bday=bday.replace("/0","/")
+    return bday[1:] if bday.startswith("0") else bday
+
+def properBday(bday:str)->str:
+    if bday.startswith("0") or "0/" in bday: bday=correctBday(bday)
+    month,day=bday.split("/")
+    return f"{MONTHS[int(month)]} {properOrdinal(day)}"
+
 # Grab our json/dictionary
 client.Data=load()
+
+####################################################################################################
+# interfaces with any apps i develop.
+class InterBot:
+    "Communication interface for cross-script interactions"
+    
+    def __init__(self,ip:str="127.0.0.1",port:int=42069):
+        "Will listen on `127.0.0.1:42069` (by default) for cross-script bot interactions"
+
+        self.command_list=(
+            "ret", # retrieve / query data
+            "set", # set / modify data
+            "dgn", # diagnostics
+            "off", # power off / shutdown
+            "bbt", # basementbot command interactions
+        )
+        self.isListening=True
+
+        self.sock=socket.socket(family=socket.AF_INET,type=socket.SOCK_STREAM)
+        address=(ip,port)
+        try: self.sock.bind(address)
+        except OSError: print("[InterBot] Ignoring socket already in use...")
+        self.sock.listen()
+        self.connection_handler=threading.Thread(target=self.handle_connections)
+
+        self.connection_handler.start()
+
+
+    def handle_connections(self):
+        try:
+            while self.isListening:
+                connection,addr=self.sock.accept()
+
+                while 1:
+                    data=connection.recv(1024).decode()
+                    if not data: break
+                    status=self.handle_command(data,connection,addr)
+                    if status: self.handle_status(status)
+
+                connection.close()
+            
+            print("[InterBot] Listener closed...")
+            self.sock.close()
+            self.sock.shutdown(socket.SHUT_RDWR)
+        
+        except Exception as e:
+            print("[InterBot]"+repr(e))
+
+
+    def handle_command(self,command:str,connection:socket.socket,address:tuple[str,int]):
+        """
+        Will execute a InterBot command, otherwise it will throw an error.\n
+        Commands are three letters in length and some take `;`-seperated agruments.\n
+        All return are in the form: `suc/err <operation> [specific data]`.\n
+        The `ret` command requires `;`-seperated path to data and returns desired data.\n
+        The `set` command requires `;`-seperated path to data and returns a confirmation of change.\n
+        The `dgn` command will return a diagnostic report.\n
+        The `off` command will shut off the bot interface.\n
+        """
+        
+        #print("Handle command triggered!")
+        
+        
+        execute=command[:3]
+        args=self.parse_args(command[3:])
+
+        if not execute in self.command_list:
+            connection.send(f"err cmd {execute}".encode())
+            return 1 # error code 1, unknown command
+
+        else:
+            try:
+                if execute=="dgn": # diagnostics
+                    dgn=f"upt:{BOOT_TIME};"
+                    dgn+=f"cpu:{psutil.cpu_count()};"
+                    dgn+=f"cpr:{psutil.cpu_percent()};"
+                    dgn+=f"ram:{psutil.virtual_memory().available};"
+                    dgn+=f"rpr:{psutil.virtual_memory().percent};"
+                    connection.sendall(dgn.encode())
+                elif execute=="ret":
+                    # by accident, requests for the entirety of client.Data cannot be made, however this may prove to be useful
+                    target=client.Data
+                    for arg in args:
+                        try:
+                            target=target[arg]
+                        except KeyError:
+                            connection.send(f"err {target}".encode())
+                            return 2 # error code 2, retrieve error
+                    else:
+                        targetPath=";".join(args)
+                        connection.send(f"suc {targetPath}={target}".encode())
+                        return 0
+                elif execute=="set":
+                    try:
+                        targetPath=args
+                        if "]" in command or not "=" in args[-1]:
+                            connection.send(f"err arg".encode())
+                            return 4 # error code 4, possible attempt to exec code
+                        target=args[-1].split("=")[1]
+                        args[-1]=args[-1].split("=")[0]
+                        execCommand="client.Data"+"".join(f"[{arg}]" if arg.isdigit() else f"[\"{arg}\"]" for arg in args)+"="+(target if target.isdigit() or target in ("True","False") else f"\"{target}\"")
+                        # this can possibly be exploited, but i think checking for "]" should be good enough
+                        exec(execCommand)
+                        # check to make sure it worked
+                        checkTarget=client.Data
+                        for arg in args:
+                            checkTarget=checkTarget[arg]
+                        if checkTarget==target:
+                            connection.send(f"err set exe".encode())
+                            return 5 # error code 5, execute error
+                    except:
+                        connection.send(f"err set".encode())
+                        return 3 # error code 3, set error
+                elif execute=="off":
+                    try:
+                        self.isListening=False
+                        ip,port=address
+                        _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S")
+                        print(f"{_dt} [INTERBOT] Disconnected server by {ip}:{port}")
+                    except:
+                        connection.send(f"err off".encode())
+                        return 6
+                
+                elif execute=="bbt":
+                    connection.send(f"suc msg:This feature is still being developed.".encode())
+
+            except Exception as e:
+                connection.send(f"err {execute};{repr(e)}".encode())
+                return -1 # error code -1, general failure
+            
+            else:
+                return 0 # error code 0, success
+
+
+    def parse_args(self,args:str):
+        return [int(arg) if arg.isdigit() else arg for arg in args.split(";")]
+
+
+    def handle_status(self,status:int):
+        if status==0:
+            message="Succeeded"
+        elif status==1:
+            message="Unknown command"
+        elif status==2:
+            message="Retrieval error"
+        elif status==3:
+            message="Set error"
+        elif status==-1:
+            message="Uncaught error during runtime"
+        else:
+            message="Unknown error code"
+        
+        print("[InterBot] "+message)
 
 ####################################################################################################
 
@@ -237,6 +433,7 @@ async def on_ready(): # do all this on startup...
     client.wrdAssocC=client.basement.get_channel(859807366219694080) # word association channel
     client.lSSC=client.basement.get_channel(933183879983013968) # newest minigame, long-story-short
     client.testC=client.basement.get_channel(933576021641400370) # test channel in dev category
+    client.alphaCountC=client.basement.get_channel(932125853003943956) # alphabet counting channel, minigame
     client.announcementC=client.basement.get_channel(858156757788524554)
     client.spamC=client.basement.get_channel(942576682395660358) # spam channel
     client.botInteractC=client.basement.get_channel(858422701165510690) # bot-interactions channel
@@ -245,6 +442,15 @@ async def on_ready(): # do all this on startup...
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
+
+    # edit reconnect message, if it exists
+    try: recChannelID, recMsgID=client.Data["reconnect"]
+    except KeyError: pass
+    except Exception as e: print(f"{_dt} [BasementBot] There was an internal error during reconnect message edit.\n{repr(e)}")
+    else:
+        channel:discord.TextChannel=client.get_channel(recChannelID)
+        message:discord.PartialMessage=channel.get_partial_message(recMsgID)
+        await message.edit(embed=discord.Embed(title="Reconnected!",color=discord.Color.green()))
 
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
@@ -257,10 +463,10 @@ async def on_ready(): # do all this on startup...
         if kiddie.id not in client.Data:
             create(client.Data, kiddie.id, kiddie.display_name, _dt)
             for role in kiddie.roles: # determine permission level for every kiddie
-                if role.name=="Admin":
+                if role.name=="Administrator":
                     client.Data[kiddie.id]["permLvl"]=2
                     break
-                elif role.name=="Mod":
+                elif role.name=="Moderator":
                     client.Data[kiddie.id]["permLvl"]=1
                     break
             if kiddie.id==806307221171994624: client.Data[kiddie.id]["permLvl"]=3 # noah
@@ -292,22 +498,24 @@ async def on_ready(): # do all this on startup...
             client.Data["randTime"]=[rand.randint(5,14),rand.randint(0,59)] # new random time
         # handles happy birthday
         if (now.hour,now.minute,now.second)==(12,0,0):
+            monthDay=now.strftime("%m/%d")
             for member in [i for i in client.Data if type(i)==int]:
                 try:
-                    if client.Data[member]["birthday"]==_dt[:5]:
-                        member:discord.Member=client.basement.get_user(member)
-                        await client.basementC.send(embed=discord.Embed(title="HAPPY BIRTHDAY!",description=f"Wishing **{member.display_name}** a happy birthday! :tada:",color=discord.Color.blue()))
+                    if client.Data[member]["birthday"]==monthDay:
+                        member:discord.Member=client.basement.get_member(member)
+                        await client.basementC.send(embed=discord.Embed(title="HAPPY BIRTHDAY!",description=f"Wishing **{member.display_name}** a happy birthday! :tada:",color=member.color))
                 except KeyError:
+                    await client.modLog.send(f"{client.josh.mention} i had an error finding {member.display_name}'s birthday data")
                     print(f"Coudn't find 'happy birthday' for {member} ({client.Data[member]['name']})")
         # handles good night
         if (now.hour,now.minute,now.second)==(23,59,59) and (now.month,now.day)!=(12,31): # will say "Goodnight, y'all" EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
-        
+
         ##################################
         ####### ROUTINE MODERATION #######
         ##################################
         # executes "/log" every hour
-        if now.minute==0 and 0<now.second<=10:
+        if (now.minute,now.second)==(0,0):
             online,o,dt_str="",0,now.strftime("%m/%d/%Y %H:%M:%S")
             for kiddie in client.basement.members:
                 if kiddie.raw_status!="offline" and kiddie.bot==False:
@@ -355,6 +563,10 @@ async def on_ready(): # do all this on startup...
             valintDay=discord.Embed(description="Have a great valintines day, whether you're a single pringle, or a hopeless romantic! Just know that someone out there loves you very very much ❤️",color=discord.Color.red())
             valintDay.set_author(name="Happy Valentine's Day!",icon_url="https://test.thebasement.group/images/heart.png")
             await client.basementC.send(embed=valintDay)
+        # handles 2/22/22 22:22:22
+        if (now.year-2000,now.month,now.day,now.hour,now.minute,now.second)==(22,2,22,22,22,22):
+            _dtstr=now.strftime("%m/%d/%Y %H:%M:%S")
+            await client.basementC.send(embed=discord.Embed(title="Happy twosday!",description=f"The time is:\n```{_dtstr} CST```"))
 
         # dont DoS our bot, keep it slow but not too slow
         await aio.sleep(1)
@@ -466,6 +678,9 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
     if before.channel==client.counting and Bclean.isdigit(): # counting alert
         await before.reply(f"{auth.name} changed their message \"`{Bclean}`\")! The current number is `{client.Data['counting']}`",mention_author=False)
     
+    if before.channel==client.alphaCountC and not before.content.startswith("> "):
+        await after.delete()
+
     # Profanity filter
     for word in client.Data["blw"]:
         filtered=scanMessage(word,Aclean)
@@ -488,13 +703,18 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
         if not emoji in (upEmoji,downEmoji) and message.author==client.user:
             await message.remove_reaction(emoji,emojiAuth)
             return
-        ups:discord.Reaction=list(filter(lambda x: x.emoji==upEmoji, message.reactions))[0]
-        downs:discord.Reaction=list(filter(lambda x: x.emoji==downEmoji, message.reactions))[0]
-        downUsers=await downs.users().flatten()
-        async for upAuthor in ups.users():
-            if upAuthor in downUsers:
-                await message.remove_reaction(upEmoji,upAuthor)
-                await message.remove_reaction(downEmoji,upAuthor)
+        try:
+            ups:discord.Reaction=list(filter(lambda x: x.emoji==upEmoji, message.reactions))[0]
+            downs:discord.Reaction=list(filter(lambda x: x.emoji==downEmoji, message.reactions))[0]
+        except IndexError: pass # this will happen if we cant find the up- and downvote history :/
+        except Exception as e: raise e
+        
+        else:
+            downUsers=await downs.users().flatten()
+            async for upAuthor in ups.users():
+                if upAuthor in downUsers:
+                    await message.remove_reaction(upEmoji,upAuthor)
+                    await message.remove_reaction(downEmoji,upAuthor)
 
     #elif emoji==client.get_emoji(935571232173199380):
     #    channel:discord.TextChannel=client.get_channel(payload.channel_id)
@@ -560,7 +780,7 @@ async def on_message(message:discord.Message):
         print(f"{_dt} {auth.name} ({auth.display_name}) {said} \"{clean}\" (path: {message.channel.id}/{message.id})", file=f)
 
     if message.channel==client.testC:
-        print(f"{_dt} {auth.display_name} - {msg}")
+        print(f"{_dt} [BasementBot] {auth.display_name} - {msg}")
         #print(profanity_filter.extra_profane_word_dictionaries)
 
     #################################### blacklisted word check ####################################
@@ -728,7 +948,7 @@ async def on_message(message:discord.Message):
 
     elif msg=="$records":
         await message.delete()
-        print(f"{_dt} {auth.name} ({auth.display_name}) requested their records.")
+        print(f"{_dt} [BasementBot] {auth.name} ({auth.display_name}) requested their records.")
         await auth.send(f"Per your request, here is all the data assigned to your discord ID in my database:```py\n{client.Data[auth.id]}\n```")
         return
 
@@ -764,16 +984,16 @@ async def on_message(message:discord.Message):
         code,f=" ".join(i.strip() for i in clean.split(" ")[1:]),StringIO()
 
         if "input" in code or "import os" in code or "while True:" in code or "quit" in code:
-            print(f"{_dt} - {auth.display_name} may be a troublemaker.")
+            print(f"{_dt} [BasementBot] - {auth.display_name} may be a troublemaker.")
             await message.channel.send(f"{auth.mention}, you may or may not have known that some of your code could break me, so I'm not gonna execute anything containing that")
             return
         try:
             with redirect_stdout(f): exec(code)
             out=f.getvalue()
-            print(f"{_dt} - {auth.display_name} used '$inj'")
+            print(f"{_dt} [BasementBot] - {auth.display_name} used '$inj'")
             await message.channel.send(f"{auth.mention}, I ran that python code and this is the output:```\n{out}\n```")
         except Exception as error:
-            print(f"{_dt} - {auth.display_name} used '$inj' -- but it failed.")
+            print(f"{_dt} [BasementBot] - {auth.display_name} used '$inj' -- but it failed.")
             error=repr(error)
             await message.channel.send(f"{auth.mention}, I ran that python code and I encountered an error.```\n{error}\n```")
         return
@@ -807,20 +1027,22 @@ class slashCmds:
         await ctx.send(embed=embed)
 
     @slash.slash(
-        name="howmanylines",
+        name="botstats",
         description=f"How many lines long is BasementBot?",
         guild_ids=GUILDS
     )
-    async def _howmanylines(ctx:SlashContext):
+    async def _botstats(ctx:SlashContext):
         "e"
         lastMod=time.strftime("%m/%d/%Y %H:%M:%S", time.localtime(getmtime(client.dir+"/bb.py")))
         with open("bb.py",'r') as f: lines=len(f.readlines())+1
         size=round(getsize("bb.py")/1024,2)
-        embed=discord.Embed(title="Bot statistics",description="Visit [the bot's webpage](https://bot.thebasement.group) for more data!",color=discord.Color.blue())
+        embed=discord.Embed(title="Bot statistics",description="~~Visit [the bot's webpage](https://bot.thebasement.group) for more data!~~ Down for maintenance.",color=discord.Color.blue())
         embed.add_field(name="Lines",value=f"```{lines}```")
         embed.add_field(name="Size",value=f"```{size}KB```")
         embed.add_field(name="Last edit",value=f"```{lastMod} CST```",inline=False)
         embed.add_field(name="Last boot time",value=f"```{BOOT_TIME} CST```",inline=False)
+        embed.add_field(name="CPU",value=f"```{psutil.cpu_count()} cores, {psutil.cpu_percent()}%```")
+        embed.add_field(name="RAM",value=f"```{psutil.virtual_memory().percent}% of {round(psutil.virtual_memory().available/(1024**3),1)}GB```")
         await ctx.send(embed=embed)
 
     @slash.slash(
@@ -935,7 +1157,7 @@ class slashCmds:
         save(client.Data) # save data
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
         await ctx.send(embed=discord.Embed(title="Disconnecting...",color=discord.Color.red()))
-        print(f"{_dt} {ctx.author.name} initiated disconnect.")
+        print(f"{_dt} [BasementBot] {ctx.author.name} initiated disconnect.")
         await client.close()
 
     @slash.slash(
@@ -1320,6 +1542,12 @@ class slashCmds:
                 description="This will go after \"@Children,\" so no need to begin with a mention.",
                 option_type=str,
                 required=True
+            ),
+            create_option(
+                name="ping_everyone",
+                description="Defaults to TRUE! Set to False if you don't want BasementBot pinging everyone.",
+                option_type=bool,
+                required=False
             )
         ]
     )
@@ -1334,10 +1562,10 @@ class slashCmds:
             )
         ]
     )
-    async def _announce(ctx:SlashContext,message:str):
+    async def _announce(ctx:SlashContext,message:str,ping_everyone:bool=True):
         "s"
-        await client.announcementC.send(f"{client.kRole.mention}, {message}") # sends the announcement to the #announcements channel.... mention kiddie role
-        await ctx.send(f"Success!")
+        await client.announcementC.send(f"{f'{client.kRole.mention}, ' if ping_everyone else ''}{message}") # sends the announcement to the #announcements channel.... mention kiddie role
+        await ctx.send(embed=discord.Embed(title="Success!",description=f"Go check out {client.announcementC.mention}!",color=discord.Color.green()))
 
     @slash.slash(
         name="statistics",
@@ -1388,14 +1616,16 @@ class slashCmds:
     async def _reconnect(ctx:SlashContext):
         "s"
         _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S")
-        save(client.Data)
-        await ctx.send(embed=discord.Embed(title="Reconnecting...",color=discord.Color.from_rgb(255,255,51))) # yellow
+        reconnectMsg=await ctx.send(embed=discord.Embed(title="Reconnecting...",color=discord.Color.from_rgb(255,255,51))) # yellow
         await client.modLog.send(f"```{_dt} {ctx.author.name} is reconnecting the bot.```")
         for voiceClient in client.voice_clients:
             await voiceClient.disconnect()
+        client.Data["reconnect"]=(reconnectMsg.channel.id,reconnectMsg.id)
+        save(client.Data)
+        IBotServer.isListening=False
         await client.close()
         del client.Data
-        print("\nReconnecting...")
+        print("\n[BasementBot] Reconnecting...")
         #profanity_filter.restore_profane_word_dictionaries()
         system("python3.9 bb.py")
 
@@ -1621,7 +1851,7 @@ class slashCmds:
                     embeds+=[discord.Embed(color=discord.Color.blue())]
                     bdaylist=""
                     bdaylist+=f"<@{member}>: {client.Data[member]['birthday']}\n"
-        
+
         if not bdaylist: bdaylist="None!"
         embeds[-1].add_field(name=f"{'More birthdays!' if multiple else 'All the birthdays!'}",value=bdaylist)
         await ctx.send(embeds=embeds)
@@ -1874,6 +2104,47 @@ class slashCmds:
         except KeyError:
             await ctx.send(embed=discord.Embed(title="Error!",description=f"I couldn't find a role associated with {emoji}!",color=discord.Color.red()))
 
+    @slash.slash(
+        name="interbot",
+        description="InterBot server commands.",
+        guild_ids=GUILDS,
+        options=[
+            create_option(
+                name="reconnect",
+                description="If not already running, tries starting the server again.",
+                option_type=bool,
+                required=False
+            )
+        ]
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _interbot(ctx:SlashContext,reconnect:bool=None):
+        "a"
+        if reconnect is True:
+            if IBotServer.isListening==False:
+                # this is so scuffed
+                IBotServer.isListening=True
+                IBotServer.connection_handler=threading.Thread(target=IBotServer.handle_connections)
+                IBotServer.connection_handler.start()
+
+                await ctx.send(embed=discord.Embed(title="Reconnecting...",description=f"There's no nice way to verify it's running...{' ask Josh to look at it' if ctx.author is not client.josh else ''}",color=discord.Color.yellow()))
+
+            else:
+                await ctx.send(embed=discord.Embed(title="Error!",description="The InterBot server seems to be running already... Try restarting the entire bot with /reconnect",color=discord.Color.red()))
+
+        else:
+            await ctx.send(embed=discord.Embed(title="What?",description="Why would you do that?",color=discord.Color.blue()))
+
 ####################################################################################################
 
 @slash.slash(
@@ -1902,11 +2173,13 @@ async def _test(ctx:SlashContext):
     "s"
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
-    print(f"{_dt} responed to {ctx.author.name} via /test command.")
+    print(f"{_dt} [BasementBot] responed to {ctx.author.name} via /test command.")
     daignostHeader="="*8+" DIAGNOSTICS REPORT "+"="*8
     report="\n"+daignostHeader+f"""\nMain data size: {getsizeof(client.Data)}b\tSlash Size: {getsizeof(slash)}b"""
     print(report)
     await ctx.send(embed=discord.Embed(title="Success!",description=f"All functions are properly working, {ctx.author.mention}",color=discord.Color.green()))
+
+IBotServer=InterBot()
 
 print(f"Loaded entire code in {dt()-st}s!")
 client.run(token)
