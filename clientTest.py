@@ -11,7 +11,7 @@ def client(data:str):
         #print("connected!")
         connect.send(data.encode())
         if data=="off": return None
-        return connect.recv(1024).decode()#f"received {connect.recv(1024).decode()}"
+        return connect.recv(4096).decode()
 
 if __name__=="__main__":
     while 1:

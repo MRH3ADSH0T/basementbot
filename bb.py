@@ -2,10 +2,12 @@
 # Documentation:    https://discordpy.readthedocs.io/en/latest/api.html
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
+from multiprocessing.sharedctypes import Value
 from timeit import default_timer as dt
 
-from pexpect import ExceptionPexpect
 st=dt() # start of all code
+# makes startup prettier. dont worry about it this totally doesnt hinder startup performance.
+print()
 
 #import warnings
 #warnings.filterwarnings("ignore")
@@ -18,15 +20,15 @@ import asyncio as aio
 from discord_slash import SlashContext, SlashCommand
 from discord_slash.utils.manage_commands import create_option, create_choice, create_permission
 # system
-from sys import getsizeof
+import sys
 from os.path import isfile, dirname, getsize, getmtime
 from contextlib import redirect_stdout
 from dotenv import dotenv_values as dev
-from os import system
+import os
 import psutil
 import socket
 import threading
-from sys import stdout
+from traceback import print_exc
 # time
 from datetime import datetime as datet, timedelta
 from pytz import timezone
@@ -35,6 +37,7 @@ import time
 import random as rand
 from hashlib import sha256 as sha
 from io import StringIO
+import http.server as httpserver
 #from profanity_filter import ProfanityFilter
 #from profanity_check import predict as pf_predict
 # add something about pip install discord.py[voice]
@@ -165,6 +168,9 @@ async def nickToMember(nick:str, author:discord.Member):
         await client.modLog.send(f"{author.mention}, there are `{len(memberGuesses)}` people that match the username you provided me with (\"{nick}\") please check your spelling and/or specify further.{glist}")
         return
 
+def nickToMemberSync(nick:str)->list[discord.Member]:
+    return [kiddie for kiddie in client.basement.members if kiddie.display_name.startswith(nick) or kiddie.name.startswith(nick)]
+
 def verify(i:str)->bool: return i.strip() and not i.strip().startswith("#") and len(i.strip())-1
 
 def getPermissions()->dict[str,str]:
@@ -223,9 +229,9 @@ def scanMessage(phrase:str, string:str) -> bool:
     try: percent=len([i for i in string if i==" "])/len(string)
     except ZeroDivisionError: percent=1
     for char in chars:
-        if (string!="he'll" and phrase in string.replace(char,"").split(" ")):# and not phrase in string:
+        if string!="he'll" and phrase in string.replace(char,"").split(" "):# and not phrase in string:
             return string.replace(char,"").replace(phrase, f"||{phrase}||")
-    if phrase in string.replace(" ","") and not phrase in string and percent>.45:
+    if phrase in string.replace(" ","") and not phrase in string and percent>.42:
         return string.replace(" ","").replace(phrase, f"||{phrase}||")
     elif f" {phrase} " in string or phrase==string:
         return string.replace(phrase, f"||{phrase}||")
@@ -256,159 +262,223 @@ def properBday(bday:str)->str:
 
 # Grab our json/dictionary
 client.Data=load()
+if client.Data:
+    print("[BasementBot] Client data read sucessfully!")
 
 ####################################################################################################
-# interfaces with any apps i develop.
-class InterBot:
-    "Communication interface for cross-script interactions"
-    
-    def __init__(self,ip:str="127.0.0.1",port:int=42069):
-        "Will listen on `127.0.0.1:42069` (by default) for cross-script bot interactions"
 
-        self.command_list=(
-            "ret", # retrieve / query data
-            "set", # set / modify data
-            "dgn", # diagnostics
-            "off", # power off / shutdown
-            "bbt", # basementbot command interactions
-        )
-        self.isListening=True
+class Interbot (httpserver.BaseHTTPRequestHandler):
 
-        self.sock=socket.socket(family=socket.AF_INET,type=socket.SOCK_STREAM)
-        address=(ip,port)
-        try: self.sock.bind(address)
-        except OSError: print("[InterBot] Ignoring socket already in use...")
-        self.sock.listen()
-        self.connection_handler=threading.Thread(target=self.handle_connections)
+    def end_headers(self):
+        #now=datet.now().strftime("%H:%M:%S")
+        #print(f"[Interbot] {now} - triggered end_headers()")
+        self.send_header("Access-Control-Allow-Origin","https://bot.thebasement.group")
+        super().end_headers()
 
-        self.connection_handler.start()
+    # Silence requests log
+    def log_request(self, code="-", size="-"):
+        return
 
+    def do_OPTIONS(self):
+        if self.path=="/cmd":
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Headers","content-type")
+            self.send_header("Access-Control-Allow-Methods","POST,OPTIONS")
+            self.send_header("Content-type","text/plain")
+            self.send_header("allow","OPTIONS, POST")
+            self.end_headers()
+        else:
+            self.quick_code(404)
 
-    def handle_connections(self):
+    def do_GET(self):
         try:
-            while self.isListening:
-                connection,addr=self.sock.accept()
+            self.send_response(200)
+            self.send_header("Content-type","text/plain")
+            self.end_headers()
+            self.wfile.write("Hey there!\n".encode())
+        except:
+            print_exc()
+    
+    def body(self)->dict[str,]:
+        return json.loads(self.rfile.read(int(self.headers.get("Content-Length"))))
 
-                while 1:
-                    data=connection.recv(1024).decode()
-                    if not data: break
-                    status=self.handle_command(data,connection,addr)
-                    if status: self.handle_status(status)
+    def validate(self,password:str)->bool:
+        with open("/root/basementbot/passwords",'r') as f: return password in [i.strip() for i in f.readlines()]
 
-                connection.close()
-            
-            print("[InterBot] Listener closed...")
-            self.sock.close()
-            self.sock.shutdown(socket.SHUT_RDWR)
+    # 2xx responses. adds headers and sends response
+    def _200(self,data:dict[str,]):
+        self.send_response(200)
+        self.send_header("Content-type","application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    # any HTTP response code. adds headers and sends response
+    def quick_code(self,code:int,message:str=None):
+        self.send_response(code)
+        if not message: self.end_headers()
+        else:
+            self.send_header("Content-type","application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"msg":message}).encode())
+    
+    def parse_args(self,arg:str):
+        "Auto converts a `;`-seperated string of keys into a list of integers and strings."
+        arg=arg.strip()
+        return int(arg) if arg.isdigit() else arg
+
+    def do_POST(self):
+        if not self.path in ("/test","/cmd"):
+            self.quick_code(404)
+            return
+        body=self.body()
         
-        except Exception as e:
-            print("[InterBot]"+repr(e))
-
-
-    def handle_command(self,command:str,connection:socket.socket,address:tuple[str,int]):
-        """
-        Will execute a InterBot command, otherwise it will throw an error.\n
-        Commands are three letters in length and some take `;`-seperated agruments.\n
-        All return are in the form: `suc/err <operation> [specific data]`.\n
-        The `ret` command requires `;`-seperated path to data and returns desired data.\n
-        The `set` command requires `;`-seperated path to data and returns a confirmation of change.\n
-        The `dgn` command will return a diagnostic report.\n
-        The `off` command will shut off the bot interface.\n
-        """
-        
-        #print("Handle command triggered!")
-        
-        
-        execute=command[:3]
-        args=self.parse_args(command[3:])
-
-        if not execute in self.command_list:
-            connection.send(f"err cmd {execute}".encode())
-            return 1 # error code 1, unknown command
+        try: isValid=self.validate(body["password"])
+        except: self.quick_code(400,"Expected: \"password\"")
 
         else:
-            try:
-                if execute=="dgn": # diagnostics
-                    dgn=f"upt:{BOOT_TIME};"
-                    dgn+=f"cpu:{psutil.cpu_count()};"
-                    dgn+=f"cpr:{psutil.cpu_percent()};"
-                    dgn+=f"ram:{psutil.virtual_memory().available};"
-                    dgn+=f"rpr:{psutil.virtual_memory().percent};"
-                    connection.sendall(dgn.encode())
-                elif execute=="ret":
-                    # by accident, requests for the entirety of client.Data cannot be made, however this may prove to be useful
-                    target=client.Data
-                    for arg in args:
-                        try:
-                            target=target[arg]
-                        except KeyError:
-                            connection.send(f"err {target}".encode())
-                            return 2 # error code 2, retrieve error
+            if isValid:
+                if self.path=="/test":
+                    self.send_response_only(200,"all good!")
+                    self._200({
+                        "msg":"hi"
+                    })
+                    return
+                elif self.path=="/cmd":
+                    # cmd can be a variety of commands
+                    #  dgn - diagnostics
+                    #  ret - gets the value of some item in the dictionary
+                    #  set - changes the value of some item in the dictionary
+                    #  tst - experimental
+                    #  bbt - execute slash commands
+                    #  res - will resolve discord IDs to json objects that note it's attributes
+                    #  lok - will lookup a member's nickname or username based on .startswith()
+                    if "command" in body:
+                        command:str=body["command"]
+                        if command=="dgn":
+                            # args:     None
+                            # returns:  a dict of current operating values
+                            data={
+                                "upt":BOOT_TIME,
+                                "cpu":str(psutil.cpu_count()),
+                                "cpr":str(psutil.cpu_percent()),
+                                "ram":str(psutil.virtual_memory().available),
+                                "rpr":str(psutil.virtual_memory().percent),
+                                "pid":str(os.getpid())
+                            }
+                            self._200(data)
+                            #print(f"[Interbot] i just sent {data}")
+                        elif command=="set":
+                            # args:     path,value
+                            #  path:    required. a list of keys
+                            #  value:   required. a string of the new value of path
+                            # returns:  a confirmation, client.Data is modified
+                            if not "path" in body:
+                                self.quick_code(400,"Expected: \"path\"")
+                                return
+                            elif not "value" in body:
+                                self.quick_code(400,"Expected: \"value\"")
+                                return
+                            path=body["path"]
+                            value=self.parse_args(body["value"])
+
+                            for place in path:
+                                # will (hopefully) prevent rexec
+                                if "]" in place or ";" in place:
+                                    self.quick_code(418,"no")
+                                    return
+                            if type(value)==str:
+                                if ";" in value:
+                                    # will (hopefully) prevent rexec
+                                    self.quick_code(418,"no")
+                                    return
+
+                            try:
+                                execCommand="client.Data"+"".join(f"[\"{arg}\"]" if type(arg)==str else f"[{arg}]" for arg in path)
+                                execCommand+="="+(f"\"{value}\"" if type(value)==str else str(value))
+                                # this isn't dangerous at all
+                                exec(execCommand)
+                                target=client.Data
+                                for place in path:
+                                    target=target[place]
+                                if str(target)!=str(target).replace('"',"'"):
+                                    print(f"target: {target} - {type(target)}")
+                                    print(f"path: {path}")
+                                    print(f"command: {execCommand}")
+                                    raise ValueError
+                            except ValueError:
+                                print_exc()
+                                self.quick_code(500,"Unsuccessfully set.")
+                                return
+                            except:
+                                print_exc()
+                                self.quick_code(500,"Internal error\nContact josh@thebasement.group")
+                                return
+
+                            else:
+                                self._200({
+                                    "msg":"Success!"
+                                })
+                                return
+                        elif command=="ret":
+                            # args:     path
+                            #  path:    required. the path to the desired target
+                            # returns:  the bot's dictionary record at the target
+                            if not "path" in body:
+                                self.quick_code(400,"Expected: \"path\"")
+                                return
+
+                            path=body["path"]
+                            target=client.Data
+                            for place in path:
+                                place=place.strip()
+                                if place.isdigit(): place=int(place)
+                                try:
+                                    target=target[place]
+                                except KeyError:
+                                    self.quick_code(404,f"{place} not found")
+                                    return
+                            else:
+                                # Change all integer values in target to strings
+                                for key,value in target.items():
+                                    if type(value)==int: target[key]=str(value)
+                                self._200(target)
+                        elif command=="res":
+                            # args:     id
+                            #  id:      required. the id of the unknown object
+                            # returns:  a dictionary of a discord object
+                            basem:discord.Guild=client.basement
+                            converters=(basem.get_channel,basem.get_member,basem.get_role,client.get_emoji)
+                            for converter in converters:
+                                conv=converter(int(body["id"]))
+                                try:
+                                    if conv is not None:
+                                        self._200(conv.__dict__())
+                                        return
+                                except AttributeError:
+                                    print_exc()
+                                    self.quick_code(500,f"Error resolving {body['id']}")
+                            else:
+                                self.quick_code(404,"Could not resolve")
+                        elif command=="lok":
+                            # args:     nick
+                            #  nick:    a string representing the nickname
+                            # returns:  a member object
+                            if not "nick" in body:
+                                self.quick_code(400,f"Expected: \"nick\"")
+                                return
+                            nick:str=body["nick"]
+                            self._200({
+                                member.display_name:client.basement.get_member(member.id).__dict__() for member in nickToMemberSync(nick)
+                            })
+                        else:
+                            self.quick_code(404,f"Unknown command: \"{command}\"")
+
                     else:
-                        targetPath=";".join(args)
-                        connection.send(f"suc {targetPath}={target}".encode())
-                        return 0
-                elif execute=="set":
-                    try:
-                        targetPath=args
-                        if "]" in command or not "=" in args[-1]:
-                            connection.send(f"err arg".encode())
-                            return 4 # error code 4, possible attempt to exec code
-                        target=args[-1].split("=")[1]
-                        args[-1]=args[-1].split("=")[0]
-                        execCommand="client.Data"+"".join(f"[{arg}]" if arg.isdigit() else f"[\"{arg}\"]" for arg in args)+"="+(target if target.isdigit() or target in ("True","False") else f"\"{target}\"")
-                        # this can possibly be exploited, but i think checking for "]" should be good enough
-                        exec(execCommand)
-                        # check to make sure it worked
-                        checkTarget=client.Data
-                        for arg in args:
-                            checkTarget=checkTarget[arg]
-                        if checkTarget==target:
-                            connection.send(f"err set exe".encode())
-                            return 5 # error code 5, execute error
-                    except:
-                        connection.send(f"err set".encode())
-                        return 3 # error code 3, set error
-                elif execute=="off":
-                    try:
-                        self.isListening=False
-                        ip,port=address
-                        _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S")
-                        print(f"{_dt} [INTERBOT] Disconnected server by {ip}:{port}")
-                    except:
-                        connection.send(f"err off".encode())
-                        return 6
-                
-                elif execute=="bbt":
-                    connection.send(f"suc msg:This feature is still being developed.".encode())
-
-            except Exception as e:
-                connection.send(f"err {execute};{repr(e)}".encode())
-                return -1 # error code -1, general failure
-            
+                        self.quick_code(400,"Expected: \"command\"")
+                    return
             else:
-                return 0 # error code 0, success
-
-
-    def parse_args(self,args:str):
-        return [int(arg) if arg.isdigit() else arg for arg in args.split(";")]
-
-
-    def handle_status(self,status:int):
-        if status==0:
-            message="Succeeded"
-        elif status==1:
-            message="Unknown command"
-        elif status==2:
-            message="Retrieval error"
-        elif status==3:
-            message="Set error"
-        elif status==-1:
-            message="Uncaught error during runtime"
-        else:
-            message="Unknown error code"
-        
-        print("[InterBot] "+message)
+                self.quick_code(401,"Incorrect password")
+                return
 
 ####################################################################################################
 
@@ -439,6 +509,8 @@ async def on_ready(): # do all this on startup...
     client.botInteractC=client.basement.get_channel(858422701165510690) # bot-interactions channel
     client.noahb=client.basement.get_member(806307221171994624) # noah
     client.josh=client.basement.get_member(483000308876967937) # josh smith
+    client.modGenC=client.basement.get_channel(862035189159690280) # mod-general channel
+    client.staffRole=client.basement.get_role(936734394591363182) # staff role
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
@@ -472,7 +544,7 @@ async def on_ready(): # do all this on startup...
             if kiddie.id==806307221171994624: client.Data[kiddie.id]["permLvl"]=3 # noah
 
         elif "joinDate" not in client.Data[kiddie.id]:
-            print(f"Created joinDate entry for \"{kiddie.display_name}\"")
+            print(f"[BasementBot] Created joinDate entry for \"{kiddie.display_name}\"")
             joinDate:datet=kiddie.joined_at
             client.Data[kiddie.id]["joinDate"]=joinDate.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
     # status
@@ -482,18 +554,21 @@ async def on_ready(): # do all this on startup...
     # sucess report
     await client.modLog.send(f"```{_dt} connected.```") # report connection
     hour, minute = client.Data["randTime"]
-    print(f"Sucessfully loaded bot configurations! Startup took {dt()-st}s!\nGood-morning Time: {hour}:{minute}")
+    print(f"[BasementBot] Sucessfully loaded bot configurations! Startup took {dt()-st}s!\nGood-morning Time: {hour}:{minute}")
     print(f"Boot time: {BOOT_TIME}")
 
     # main loop
     while True:
+        if not server.isRunning:
+            server.server_close()
+            print("[Interbot] ok i shut down you dumb f***")
         now=datet.now()
         ##################################
         ######### ROUTINE CASUAL #########
         ##################################
         # handles good morning
         if client.Data["GMday"]!=now.day and [now.hour,now.minute]==client.Data["randTime"]:
-            await client.basementC.send(f"Good morning guys...")
+            await client.basementC.send(f"Good morning guys!")
             client.Data["GMday"]=now.day # reset day
             client.Data["randTime"]=[rand.randint(5,14),rand.randint(0,59)] # new random time
         # handles happy birthday
@@ -577,11 +652,9 @@ async def on_member_join(member:discord.Member):
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
 
     if member.id!=864881059187130458 and member.id not in client.Data: # not Josh S. (alt)
-
         await client.welcome.send(f"{client.wRole.mention}, give a warm welcome to our newest member, {member.display_name}!") # public welcome
 
     elif member.id in client.Data:
-
         await client.welcome.send(f"{member.display_name} has returned!")
 
     if member.id==864881059187130458: # be funny bc alt
@@ -593,17 +666,6 @@ async def on_member_join(member:discord.Member):
     # give member childrne roll
     await member.add_roles(client.kRole)
 
-    # create client.Data entry
-    #client.Data[member.id]={"name":f"{member.name}",
-    #                        "isMuted":False,
-    #                        "warnCount":0,
-    #                        "muteCount":0,
-    #                        "banCount":0,
-    #                        "msgCount":0,
-    #                        "permLvl":0,
-    #                        "countHigh":0,
-    #                        "countFails":0,
-    #                        "joinDate":None}
     create(client.Data, member.id, member.display_name, _dt)
     save(client.Data)
 
@@ -624,9 +686,13 @@ async def on_member_update(before:discord.Member, after:discord.Member):
     _dt=now.strftime("%m/%d/%Y %H:%M:%S") # get current time/date
 
     with open(f"{client.dir}/logs/nicknames.txt",'a', encoding="utf-8") as f:
-
         if before.display_name!=after.display_name:
             print(f"{_dt} {before.name} \"{before.display_name}\" -> \"{after.display_name}\"")
+
+        for word in client.Data["blw"]:
+            if scanMessage(word,after.display_name):
+                await after.edit(nick=before.display_name)
+                break
 
     with open(f"{client.dir}/logs/master.txt", "a", encoding="utf-8") as f:
 
@@ -720,10 +786,11 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
     #    channel:discord.TextChannel=client.get_channel(payload.channel_id)
     #    await channel.send("\"Based\"? Are you kidding me? I spent a decent portion of my life writing all of that and your response to me is \"Based\"? Are you so mentally handicapped that the only word you can comprehend is \"Based\" - or are you just some idiot who thinks that with such a short response, he can make a statement about how meaningless what was written was? Well, I'll have you know that what I wrote was NOT meaningless, in fact, I even had my written work proof-read by several professors of literature. Don't believe me? I doubt you would, and your response to this will probably be \"Based\" once again. Do I give a ****? No, does it look like I give even the slightest piece of anything about five fricking letters? I bet you took the time to type those five letters too, I bet you sat there and chuckled to yourself for 20 hearty seconds before pressing \"send\". You're so fricking pathetic. I'm honestly considering directing you to a psychiatrist, but I'm simply far too nice to do something like that. You, however, will go out of your way to make a fool out of someone by responding to a well-thought-out, intelligent, or humorous statement that probably took longer to write than you can last in bed with a chimpanzee. What do I have to say to you? Absolutely nothing. I couldn't be bothered to respond to such a worthless attempt at a response. Do you want \"Based\" on your gravestone?")
 
+    # red flag
     if emoji==client.get_emoji(940789559829082212):
         await message.remove_reaction(emoji,emojiAuth)
-        embed=discord.Embed(title="Red Flag!",description=f"{emojiAuth.mention} red flagged [this message]({message.jump_url})",color=discord.Color.red())
-        await client.modLog.send(embed=embed)
+        embed=discord.Embed(title="Red Flag!",description=f"**{emojiAuth.display_name}** red flagged [this message]({message.jump_url})!",color=discord.Color.red())
+        await client.modGenC.send(embed=embed)
 
     # will add the specified reaction role, otherwise, removes the emoji.
     if payload.channel_id==client.Data["RR"]["channel"] and not emojiAuth.bot:
@@ -785,18 +852,13 @@ async def on_message(message:discord.Message):
 
     #################################### blacklisted word check ####################################
 
-    #if pf_predict([clean]) and "sick" not in clean.lower():
-    #    filtered=[]
-    #    for word in clean.split(" "): filtered+=[f"||{word}||" if profanity_filter.is_profane(word) else word]
-    #    await message.delete()
-    #    await client.modLog.send(f"`{_dt}` {auth.display_name}'s message was deleted in {message.channel.mention}: \"{' '.join(filtered)}\"")
-
-    for word in client.Data["blw"]:
-        filtered=scanMessage(word,clean)
-        if filtered and (message.channel.id!=932125853003943956 and clean.lower()!="ass"):
-            await message.delete()
-            embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red())
-            await client.modLog.send(embed=embed)
+    if (not client.staffRole in auth.roles) or (message.channel.id!=932125853003943956 and clean.lower()!="ass"):
+        for word in client.Data["blw"]:
+            filtered=scanMessage(word,clean)
+            if filtered:
+                await message.delete()
+                await client.modLog.send(embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red()))
+                return
 
     ################################################################################################
 
@@ -1158,7 +1220,10 @@ class slashCmds:
         await client.modLog.send(f"```{_dt} {ctx.author.name} disconnected bot.```")
         await ctx.send(embed=discord.Embed(title="Disconnecting...",color=discord.Color.red()))
         print(f"{_dt} [BasementBot] {ctx.author.name} initiated disconnect.")
+        server.isRunning=False
+        time.sleep(1)
         await client.close()
+        #os.system(f"kill -9 {InterBotServer.connection_handler_pid}")
 
     @slash.slash(
         name="poll",
@@ -1171,6 +1236,12 @@ class slashCmds:
                 description="The question",
                 option_type=3,
                 required=True
+            ),
+            create_option(
+                name="role",
+                description="Defaults to @Children, however you may mention everyone",
+                option_type=8, # roles
+                required=False
             )
         ]
     )
@@ -1185,10 +1256,11 @@ class slashCmds:
             )
         ]
     )
-    async def _poll(ctx:SlashContext,poll:str):
+    async def _poll(ctx:SlashContext,poll:str,role:discord.Role=None):
         "s"
+        if not role: role=client.kRole
         pollChannel=client.get_channel(858156662703128577)
-        polled:discord.Message=await pollChannel.send(f"{client.kRole.mention}, "+poll)
+        polled:discord.Message=await pollChannel.send(f"{role.mention}, "+poll)
 
         await polled.add_reaction(client.get_emoji(858556326548340746)) # upvote
         await polled.add_reaction(client.get_emoji(858556294743064576)) # downvote
@@ -1482,6 +1554,7 @@ class slashCmds:
                     print(latest,file=f)
                 await client.modLog.send(file=discord.File(f"{client.dir}/logs/temp.txt"))
             elif other=="json":
+                save(client.Data)
                 await client.modLog.send(file=discord.File(f"{client.dir}/bb.{other}"))
             else:
                 await ctx.send(f"There was a fatal error during code execution. Please contact Josh Smith.")
@@ -1622,12 +1695,12 @@ class slashCmds:
             await voiceClient.disconnect()
         client.Data["reconnect"]=(reconnectMsg.channel.id,reconnectMsg.id)
         save(client.Data)
-        IBotServer.isListening=False
+        server.isRunning=False
+        time.sleep(1)
         await client.close()
-        del client.Data
-        print("\n[BasementBot] Reconnecting...")
+        print("[BasementBot] Reconnecting...")
         #profanity_filter.restore_profane_word_dictionaries()
-        system("python3.9 bb.py")
+        os.system(f"cd /root/basementbot && kill -9 {os.getpid()} && python3.9 bb.py")
 
     @slash.slash(
         name="snowflake",
@@ -1843,14 +1916,15 @@ class slashCmds:
         bdaylist,multiple="",False
         for member in client.Data:
             if type(member)==int and client.Data[member]['birthday']:
+                memberNick=client.basement.get_member(member).display_name
                 if len(bdaylist)<1000:
-                    bdaylist+=f"<@{member}>: {client.Data[member]['birthday']}\n"
+                    bdaylist+=f"**{memberNick}**: {client.Data[member]['birthday']}\n"
                 else:
                     embeds[-1].add_field(name="Some of the birthdays!",value=bdaylist[:-1])
                     multiple=True
                     embeds+=[discord.Embed(color=discord.Color.blue())]
                     bdaylist=""
-                    bdaylist+=f"<@{member}>: {client.Data[member]['birthday']}\n"
+                    bdaylist+=f"**{memberNick}**: {client.Data[member]['birthday']}\n"
 
         if not bdaylist: bdaylist="None!"
         embeds[-1].add_field(name=f"{'More birthdays!' if multiple else 'All the birthdays!'}",value=bdaylist)
@@ -2104,46 +2178,43 @@ class slashCmds:
         except KeyError:
             await ctx.send(embed=discord.Embed(title="Error!",description=f"I couldn't find a role associated with {emoji}!",color=discord.Color.red()))
 
-    @slash.slash(
-        name="interbot",
-        description="InterBot server commands.",
-        guild_ids=GUILDS,
-        options=[
-            create_option(
-                name="reconnect",
-                description="If not already running, tries starting the server again.",
-                option_type=bool,
-                required=False
-            )
-        ]
-    )
-    # only @admins can use this command
-    @slash.permission(
-        guild_id=GUILDS[0],
-        permissions=[
-            create_permission(
-                id=858223675949842433,
-                id_type=1,
-                permission=True
-            )
-        ]
-    )
-    async def _interbot(ctx:SlashContext,reconnect:bool=None):
-        "a"
-        if reconnect is True:
-            if IBotServer.isListening==False:
-                # this is so scuffed
-                IBotServer.isListening=True
-                IBotServer.connection_handler=threading.Thread(target=IBotServer.handle_connections)
-                IBotServer.connection_handler.start()
-
-                await ctx.send(embed=discord.Embed(title="Reconnecting...",description=f"There's no nice way to verify it's running...{' ask Josh to look at it' if ctx.author is not client.josh else ''}",color=discord.Color.yellow()))
-
-            else:
-                await ctx.send(embed=discord.Embed(title="Error!",description="The InterBot server seems to be running already... Try restarting the entire bot with /reconnect",color=discord.Color.red()))
-
-        else:
-            await ctx.send(embed=discord.Embed(title="What?",description="Why would you do that?",color=discord.Color.blue()))
+    #@slash.slash(
+    #    name="interbot",
+    #    description="InterBot server commands.",
+    #    guild_ids=GUILDS,
+    #    options=[
+    #        create_option(
+    #            name="reconnect",
+    #            description="If not already running, tries starting the server again.",
+    #            option_type=bool,
+    #            required=False
+    #        )
+    #    ]
+    #)
+    ## only @admins can use this command
+    #@slash.permission(
+    #    guild_id=GUILDS[0],
+    #    permissions=[
+    #        create_permission(
+    #            id=858223675949842433,
+    #            id_type=1,
+    #            permission=True
+    #        )
+    #    ]
+    #)
+    #async def _interbot(ctx:SlashContext,reconnect:bool=None):
+    #    "a"
+    #    if reconnect is True:
+    #        if InterBotServer.isListening==False:
+    #            # this is so scuffed
+    #            InterBotServer.isListening=True
+    #            InterBotServer.connection_handler=threading.Thread(target=InterBotServer.handle_connections)
+    #            InterBotServer.connection_handler.start()
+    #            await ctx.send(embed=discord.Embed(title="Reconnecting...",description=f"There's no nice way to verify it's running...{' ask Josh to look at it' if ctx.author is not client.josh else ''}",color=discord.Color.yellow()))
+    #        else:
+    #            await ctx.send(embed=discord.Embed(title="Error!",description="The InterBot server seems to be running already... Try restarting the entire bot with /reconnect",color=discord.Color.red()))
+    #    else:
+    #        await ctx.send(embed=discord.Embed(title="What?",description="Why would you do that?",color=discord.Color.blue()))
 
 ####################################################################################################
 
@@ -2175,11 +2246,24 @@ async def _test(ctx:SlashContext):
 
     print(f"{_dt} [BasementBot] responed to {ctx.author.name} via /test command.")
     daignostHeader="="*8+" DIAGNOSTICS REPORT "+"="*8
-    report="\n"+daignostHeader+f"""\nMain data size: {getsizeof(client.Data)}b\tSlash Size: {getsizeof(slash)}b"""
+    report="\n"+daignostHeader+f"""\nMain data size: {sys.getsizeof(client.Data)}b\tSlash Size: {sys.getsizeof(slash)}b"""
     print(report)
     await ctx.send(embed=discord.Embed(title="Success!",description=f"All functions are properly working, {ctx.author.mention}",color=discord.Color.green()))
 
-IBotServer=InterBot()
+while 1:
+    try:
+        server=httpserver.HTTPServer(("0.0.0.0",7000),Interbot)
+    except OSError as e:
+        print("The socket is (probably) already in use... retrying...")
+        time.sleep(.5)
+    else:
+        break
+
+server.isRunning=True
+print("[Interbot] started")
+serverThread=threading.Thread(target=server.serve_forever)
+serverThread.start()
 
 print(f"Loaded entire code in {dt()-st}s!")
 client.run(token)
+del client
