@@ -852,13 +852,17 @@ async def on_message(message:discord.Message):
 
     #################################### blacklisted word check ####################################
 
-    if (not client.staffRole in auth.roles) or (message.channel.id!=932125853003943956 and clean.lower()!="ass"):
-        for word in client.Data["blw"]:
-            filtered=scanMessage(word,clean)
-            if filtered:
-                await message.delete()
-                await client.modLog.send(embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red()))
-                return
+    if (message.channel.id!=932125853003943956 and clean.lower()!="ass"): # don't check for ass in the #alphabet-counting channel
+        # If adminRole is in the author's role list, end the check.
+        if client.adminRole in auth.roles:
+            pass
+        else:
+            for word in client.Data["blw"]:
+                filtered=scanMessage(word,clean)
+                if filtered:
+                    await message.delete()
+                    await client.modLog.send(embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red()))
+                    return
 
     ################################################################################################
 
@@ -1045,18 +1049,18 @@ async def on_message(message:discord.Message):
         options={
             "engine":"text-babbage-001",
             "prompt":"Whatever you say",
-            #"n":1,
-            "best_of":1,#5,
-            "temperature":1.0,#0.8,
-            "max_tokens":100,
-            "frequency_penalty":0.5
+            "n":1,
+            "best_of":5,
+            "temperature":0.85,
+            "max_tokens":512,
+            "frequency_penalty":0.9
         }
         if talk=="":
             await message.reply("Please specify a message to send.",mention_author=False)
             return
         elif talk=="$config":
             # Reply with options formatted nicely
-            await message.reply(f"```py\n{options}\n```",mention_author=False)
+            await message.reply(f"```py\n{json.dumps(options,indent=4)}\n```",mention_author=False)
             return
         else:
             try:
