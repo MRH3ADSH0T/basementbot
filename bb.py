@@ -2,7 +2,6 @@
 # Documentation:    https://discordpy.readthedocs.io/en/latest/api.html
 # Event reference:  https://discordpy.readthedocs.io/en/latest/api.html?highlight=role%20mention#event-reference
 
-from multiprocessing.sharedctypes import Value
 from timeit import default_timer as dt
 
 st=dt() # start of all code
@@ -26,7 +25,6 @@ from contextlib import redirect_stdout
 from dotenv import dotenv_values as dev
 import os
 import psutil
-import socket
 import threading
 from traceback import print_exc
 # time
@@ -38,6 +36,7 @@ import random as rand
 from hashlib import sha256 as sha
 from io import StringIO
 import http.server as httpserver
+import openai
 #from profanity_filter import ProfanityFilter
 #from profanity_check import predict as pf_predict
 # add something about pip install discord.py[voice]
@@ -54,6 +53,7 @@ client=commands.Bot(
 )
 slash=SlashCommand(client, sync_commands=True)
 token=dict(dev(".env"))["bottoken"]
+openai.api_key=dict(dev(".env"))["OPENAI_API_KEY"]
 NUKE_PASS=dict(dev(".env"))["nukePass"]
 MONTHS={
     1:'January',
@@ -1039,6 +1039,32 @@ async def on_message(message:discord.Message):
         return
 
     ############################################################
+
+    elif msg.startswith("$talk ") and client.staffRole in auth.roles:
+        talk=clean[len("$talk "):]
+        options={
+            "engine":"text-babbage-001",
+            "prompt":"Whatever you say",
+            #"n":1,
+            "best_of":1,#5,
+            "temperature":1.0,#0.8,
+            "max_tokens":100,
+            "frequency_penalty":0.5
+        }
+        if talk=="":
+            await message.reply("Please specify a message to send.",mention_author=False)
+            return
+        elif talk=="$config":
+            # Reply with options formatted nicely
+            await message.reply(f"```py\n{options}\n```",mention_author=False)
+            return
+        else:
+            try:
+                options["prompt"]=talk
+                completion=openai.Completion.create(**options)
+                await message.reply(completion.choices[0].text,mention_author=False)
+            except:
+                await message.reply("there was an error lol",mention_author=False)
 
     elif msg.startswith("$inj") and message.channel==client.breakbbC:
         await client.breakbbC.send(f"Sorry, {auth.display_name}, but this command is currently disabled.")
