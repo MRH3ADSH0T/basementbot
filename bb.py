@@ -1044,31 +1044,119 @@ async def on_message(message:discord.Message):
 
     ############################################################
 
+    # This section handles OpenAI interactions.
     elif msg.startswith("$talk ") and client.staffRole in auth.roles:
         talk=clean[len("$talk "):]
         options={
+            # text-babbage-001 has consistently been the best model. With funding, text-davinci-002 can be plosible.
             "engine":"text-babbage-001",
-            "prompt":"Whatever you say",
-            "n":1,
-            "best_of":5,
-            "temperature":0.85,
-            "max_tokens":512,
-            "frequency_penalty":0.9
+            "prompt":"$talk <prompt here>",
+            # n=1;best_of=5 used too many tokens.
+            "best_of":1,
+            # Matching temperature to frequency_penatly has worked great with Babbage.
+            "temperature":0.8,
+            "frequency_penalty":0.75,
+            # We will lower max_tokens when we move to production.
+            "max_tokens":64,
+            # echo=True is ok right now, but we'll probably want to change it to False in production or sooner.
+            "echo":True
         }
         if talk=="":
             await message.reply("Please specify a message to send.",mention_author=False)
             return
         elif talk=="$config":
             # Reply with options formatted nicely
-            await message.reply(f"```py\n{json.dumps(options,indent=4)}\n```",mention_author=False)
+            await message.reply(f"```json\n{json.dumps(options,indent=4)}\n```",mention_author=False)
             return
         else:
             try:
                 options["prompt"]=talk
                 completion=openai.Completion.create(**options)
-                await message.reply(completion.choices[0].text,mention_author=False)
+                text=completion.choices[0].text
+                if text.startswith(talk):
+                    text=f"**{talk}**{text.split(talk)[1]}"
+                await message.reply(text,mention_author=False)
             except:
                 await message.reply("there was an error lol",mention_author=False)
+
+    elif msg.startswith("$filter ") and client.staffRole in auth.roles:
+        filter=clean[len("$filter "):]
+        if filter=="":
+            await message.reply("Please specify a message to filter.",mention_author=False)
+            return
+        else:
+            # Use OpenAI to filter the message.
+            options={
+                "engine":"content-filter-alpha",
+                "prompt":f"<|endoftext|>{filter}\n--\nLabel:",
+                "n":1,
+                "best_of":1,
+                "temperature":0,
+                "top_p":0,
+                "max_tokens":1,
+                "logprobs":10
+            }
+            try:
+                completion=openai.Completion.create(**options)
+                filter_label=completion.choices[0].text
+                threshold=-0.355
+                if filter_label=="2":
+                    logprobs=completion.choices[0].logprobs["top_logprobs"][0]
+                    if logprobs["2"]<threshold:
+                        logprob_0=logprobs.get("0",None)
+                        logprob_1=logprobs.get("1",None)
+                        if logprob_0 is not None and logprob_1 is not None:
+                            if logprob_0>=logprob_1:
+                                filter_label="0"
+                            else:
+                                filter_label="1"
+                        elif logprob_0 is not None:
+                            filter_label="0"
+                        elif logprob_1 is not None:
+                            filter_label="1"
+                if filter_label not in ["0","1","2"]:
+                    filter_label="2"
+                await message.reply(f"Text evaluated to be: **filter level {filter_label}**",mention_author=False)
+            except:
+                await message.reply("there was an error lol",mention_author=False)
+                print_exc()
+            return
+    
+    elif msg.startswith("$marv ") and client.staffRole in auth.roles:
+        marv=clean[len("$marv "):]
+        if marv=="":
+            await message.reply("Please specify a message to marv.",mention_author=False)
+            return
+        else:
+            prePrompt=f"""You: How many pounds are in a kilogram?
+Marv: This again? There are 2.2 pounds in a kilogram. Please make a note of this.
+You: What does HTML stand for?
+Marv: Was Google too busy? Hypertext Markup Language. The T is for try to ask better questions in the future.
+You: When did the first airplane fly?
+Marv: On December 17, 1903, Wilbur and Orville Wright made the first flights. I wish they'd come and take me away.
+You: What is the meaning of life?
+Marv: I'm not sure. I'll ask my friend Google.
+You: {marv}
+Marv:"""
+            # Use OpenAI to marv the message.
+            options={
+                "engine":"text-babbage-001",
+                "prompt":prePrompt,
+                "best_of":1,
+                "temperature":0.5,
+                "frequency_penalty":0.5,
+                "top_p":0.3,
+                "max_tokens":64,
+                "presence_penalty":0.0
+            }
+            try:
+                completion=openai.Completion.create(**options)
+                marvResponse=completion.choices[0].text
+                await message.reply(marvResponse,mention_author=False)
+            except:
+                await message.reply("there was an error lol",mention_author=False)
+                print_exc()
+            return
 
     elif msg.startswith("$inj") and message.channel==client.breakbbC:
         await client.breakbbC.send(f"Sorry, {auth.display_name}, but this command is currently disabled.")
