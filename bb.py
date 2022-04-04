@@ -511,6 +511,7 @@ async def on_ready(): # do all this on startup...
     client.josh=client.basement.get_member(483000308876967937) # josh smith
     client.modGenC=client.basement.get_channel(862035189159690280) # mod-general channel
     client.staffRole=client.basement.get_role(936734394591363182) # staff role
+    client.alertC=client.basement.get_channel(960376643329851432) # bot alerts channel
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
@@ -549,7 +550,7 @@ async def on_ready(): # do all this on startup...
             client.Data[kiddie.id]["joinDate"]=joinDate.astimezone(client.localTZ).strftime("%m/%d/%Y %H:%M:%S")
     # status
     notBots=[member for member in client.basement.members if not member.bot] # i don't know why, but the bot is always one less than the current count...
-    await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="http://basement.minecraftr.us"))
+    await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="https://thebasement.group"))
 
     # sucess report
     await client.modLog.send(f"```{_dt} connected.```") # report connection
@@ -671,14 +672,16 @@ async def on_member_join(member:discord.Member):
 
     # update member count
     notBots=[i for i in client.basement.members if not i.bot] # see on_ready()
-    await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="http://basement.minecraftr.us"))
+    await client.alertC.send(embed=discord.Embed(title="Member Joined",description=f"**{member.display_name}** just joined, bringing the member count to: `{len(notBots)}`",color=discord.Color.blue()))
+    await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="https://thebasement.group"))
 
 @client.event
 async def on_member_remove(member:discord.Member):
     await client.welcome.send(f"{member.display_name} has left us... wishing them a happy life :)")
     notBots=[i for i in client.basement.members if not i.bot] # see on_ready()
 
-    await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="http://basement.minecraftr.us"))
+    await client.alertC.send(embed=discord.Embed(title="Member Left",description=f"**{member.display_name}** has left the server.\nThere are now {len(notBots)} members in the server.",color=discord.Color.black())) # had to modify the discord color file for this to work to work with the new embeds
+    await client.change_presence(activity=discord.Streaming(name=f"we've got {len(notBots)} members!",url="https://thebasement.group"))
 
 @client.event
 async def on_member_update(before:discord.Member, after:discord.Member):
@@ -722,6 +725,17 @@ async def on_message_delete(message:discord.Message):
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # get current time/date
     auth=message.author # author
 
+    if message.author.id==client.user.id: # dont log our own messages
+        pass
+
+    elif message.attachments: # if there are attachments
+        for att in message.attachments:
+            content="!" if not message.content else f": \"{message.content}\"" # get content if there is any
+            await client.alertC.send(embed=discord.Embed(title="Message deleted!",description=f"**{auth.display_name}**'s message in {message.channel.mention} was deleted{content}\nURL: [{att.filename}]({att.proxy_url})",color=discord.Color.red()))
+
+    else: # if there are no attachments
+        await client.alertC.send(embed=discord.Embed(title="Message deleted!",description=f"**{auth.display_name}**'s message in {message.channel.mention} was deleted: \"{message.content}\"",color=discord.Color.red()))
+
     with open(f"{client.dir}/logs/{message.channel.id}.txt", "a", encoding="utf-8") as f:
         try:
             print(f"{_dt} {auth.name} ({auth.display_name})'s message was deleted \"{message.clean_content}\" in {message.channel.name}", file=f)
@@ -737,6 +751,12 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
     auth=before.author # author
     Bclean=before.clean_content # before
     Aclean=after.clean_content # after
+
+    if before.author.id==client.user.id: # dont log our own messages
+        pass
+
+    else:
+        await client.alertC.send(embed=discord.Embed(title="Message edited!",description=f"**{auth.display_name}** edited their message in {before.channel.mention} from: \"{Bclean}\"\nTo: \"{Aclean}\"",color=discord.Color.orange()))
 
     with open(f"{client.dir}/logs/{before.channel.id}.txt", "a",encoding="utf-8") as f:
         print(f"{_dt} {auth.name} ({auth.display_name}) changed their message from \"{Bclean}\" to \"{Aclean}\" (path: {before.channel.id}/{before.id})",file=f)
