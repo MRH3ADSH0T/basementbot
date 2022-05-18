@@ -159,13 +159,13 @@ def isNext(current:str,nextNum:str) -> bool:
     else:
         return False
 
-async def nickToMember(nick:str, author:discord.Member):
+async def nickToMember(nick:str,author:discord.Member,ctx:SlashContext):
     memberGuesses:list[discord.Member]=[kiddie for kiddie in client.basement.members if kiddie.display_name.startswith(nick) or kiddie.name.startswith(nick)]
     if len(memberGuesses)==1:
         return memberGuesses[0]
     else:
         glist="\n"+"\n".join(kiddie.display_name for kiddie in memberGuesses)
-        await client.modLog.send(f"{author.mention}, there are `{len(memberGuesses)}` people that match the username you provided me with (\"{nick}\") please check your spelling and/or specify further.{glist}")
+        await ctx.send(f"{author.mention}, there are `{len(memberGuesses)}` people that match the username you provided me with (\"{nick}\") please check your spelling and/or specify further.{glist}")
         return
 
 def nickToMemberSync(nick:str)->list[discord.Member]:
@@ -282,7 +282,7 @@ class Interbot (httpserver.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         if self.path=="/cmd":
             self.send_response(200)
-            self.send_header("Access-Control-Allow-Headers","content-type")
+            self.send_header("Access-Control-Allow-Headers","content-type, accepts")
             self.send_header("Access-Control-Allow-Methods","POST,OPTIONS")
             self.send_header("Content-type","text/plain")
             self.send_header("allow","OPTIONS, POST")
@@ -323,8 +323,10 @@ class Interbot (httpserver.BaseHTTPRequestHandler):
     
     def parse_args(self,arg:str):
         "Auto converts a `;`-seperated string of keys into a list of integers and strings."
-        arg=arg.strip()
-        return int(arg) if arg.isdigit() else arg
+        if type(arg)==str:
+            arg=arg.strip()
+            return int(arg) if arg.isdigit() else arg
+        return arg
 
     def do_POST(self):
         if not self.path in ("/test","/cmd"):
@@ -352,6 +354,7 @@ class Interbot (httpserver.BaseHTTPRequestHandler):
                     #  bbt - execute slash commands
                     #  res - will resolve discord IDs to json objects that note it's attributes
                     #  lok - will lookup a member's nickname or username based on .startswith()
+                    #  rrc - reaction roles configuration
                     if "command" in body:
                         command:str=body["command"]
                         if command=="dgn":
@@ -414,6 +417,7 @@ class Interbot (httpserver.BaseHTTPRequestHandler):
                                 self.quick_code(500,"Internal error\nContact josh@thebasement.group")
                                 return
 
+                                "⍼"
                             else:
                                 self._200({
                                     "msg":"Success!"
@@ -439,8 +443,9 @@ class Interbot (httpserver.BaseHTTPRequestHandler):
                                     return
                             else:
                                 # Change all integer values in target to strings
-                                for key,value in target.items():
-                                    if type(value)==int: target[key]=str(value)
+                                if type(target)==dict:
+                                    for key,value in target.items():
+                                        if type(value)==int: target[key]=str(value)
                                 self._200(target)
                         elif command=="res":
                             # args:     id
@@ -469,6 +474,37 @@ class Interbot (httpserver.BaseHTTPRequestHandler):
                             nick:str=body["nick"]
                             self._200({
                                 member.display_name:client.basement.get_member(member.id).__dict__() for member in nickToMemberSync(nick)
+                            })
+                        elif command=="rrc":
+                            # args:     roles
+                            #  roles:   a dictionary of emoji to role names
+                            # returns:  a status message
+                            if not "roles" in body:
+                                self.quick_code(400,"Expected: \"roles\"")
+                                return
+                            roles:dict[str,str]=body["roles"]
+                            newTable:dict[str,str]={}
+                            for emoji,role in roles.items():
+                                for gRole in client.basement.roles:
+                                    if gRole.name.lower().startswith(role.lower()):
+                                        newTable[emoji]=str(gRole.id)
+                                        break
+                                else:
+                                    self.quick_code(404,f"Could not find role {role}")
+                                    return
+                            client.Data["RR"]["table"]=newTable
+
+                            async def _rrc():
+                                messages:list[discord.Message]=await client.get_channel(client.Data["RR"]["channel"]).history(limit=1).flatten()
+                                message=messages[0]
+                                for reaction in message.reactions:
+                                    if reaction.emoji not in client.Data["RR"]["table"]:
+                                        print(f"Clearing {reaction.emoji} ...")
+                                        await reaction.clear()
+
+                            aio.run_coroutine_threadsafe(_rrc(),client.loop)
+                            self._200({
+                                "msg":"Success"
                             })
                         else:
                             self.quick_code(404,f"Unknown command: \"{command}\"")
@@ -512,6 +548,7 @@ async def on_ready(): # do all this on startup...
     client.modGenC=client.basement.get_channel(862035189159690280) # mod-general channel
     client.staffRole=client.basement.get_role(936734394591363182) # staff role
     client.alertC=client.basement.get_channel(960376643329851432) # bot alerts channel
+    client.disciplineC=client.basement.get_channel(973750522651766794) # discipline channel
     client.lastSave=dt() # used for autosaving
     client.localTZ=timezone("US/Central")
     print(f"Set up client variables in {dt()-st}s!")
@@ -568,12 +605,12 @@ async def on_ready(): # do all this on startup...
         ######### ROUTINE CASUAL #########
         ##################################
         # handles good morning
-        if client.Data["GMday"]!=now.day and [now.hour,now.minute]==client.Data["randTime"]:
+        if client.Data["GMday"]!=now.day and [now.hour,now.minute]==client.Data["randTime"]: # at a random time in the morning
             await client.basementC.send(f"Good morning guys!")
             client.Data["GMday"]=now.day # reset day
             client.Data["randTime"]=[rand.randint(5,14),rand.randint(0,59)] # new random time
         # handles happy birthday
-        if (now.hour,now.minute,now.second)==(12,0,0):
+        if (now.hour,now.minute,now.second)==(9,0,0): # 9am
             monthDay=now.strftime("%m/%d")
             for member in [i for i in client.Data if type(i)==int]:
                 try:
@@ -584,7 +621,7 @@ async def on_ready(): # do all this on startup...
                     await client.modLog.send(f"{client.josh.mention} i had an error finding {member.display_name}'s birthday data")
                     print(f"Coudn't find 'happy birthday' for {member} ({client.Data[member]['name']})")
         # handles good night
-        if (now.hour,now.minute,now.second)==(23,59,59) and (now.month,now.day)!=(12,31): # will say "Goodnight, y'all" EXCEPT on new year's
+        if (now.hour,now.minute,now.second)==(23,59,59) and (now.month,now.day)!=(12,31): # will say "Goodnight, y'all" at 11:59:59pm EXCEPT on new year's
             await client.basementC.send(f"Good night, y'all 😴")
 
         ##################################
@@ -725,22 +762,23 @@ async def on_message_delete(message:discord.Message):
     _dt=datet.now().strftime("%m/%d/%Y %H:%M:%S") # get current time/date
     auth=message.author # author
 
-    if message.author.id==client.user.id: # dont log our own messages
+    if message.author.id==client.user.id or message.channel.category_id in (872720713742704671,858162628537745408): # dont log our own messages
         pass
 
-    elif message.attachments: # if there are attachments
+    elif message.attachments and message.channel not in (client.counting, client.alphaCountC, client.alertC): # if there are attachments
         for att in message.attachments:
             content="!" if not message.content else f": \"{message.content}\"" # get content if there is any
             await client.alertC.send(embed=discord.Embed(title="Message deleted!",description=f"**{auth.display_name}**'s message in {message.channel.mention} was deleted{content}\nURL: [{att.filename}]({att.proxy_url})",color=discord.Color.red()))
 
-    else: # if there are no attachments
+    elif message.channel not in (client.counting, client.alphaCountC, client.alertC): # if there are no attachments
         await client.alertC.send(embed=discord.Embed(title="Message deleted!",description=f"**{auth.display_name}**'s message in {message.channel.mention} was deleted: \"{message.content}\"",color=discord.Color.red()))
 
-    with open(f"{client.dir}/logs/{message.channel.id}.txt", "a", encoding="utf-8") as f:
-        try:
-            print(f"{_dt} {auth.name} ({auth.display_name})'s message was deleted \"{message.clean_content}\" in {message.channel.name}", file=f)
-        except AttributeError:
-            print(f"{_dt} {auth.name} ({auth.display_name})'s message was deleted \"{message.clean_content}\" in (probably) the DMs", file=f)
+    if message.channel.category_id not in (872720713742704671,858162628537745408):
+        with open(f"{client.dir}/logs/{message.channel.id}.txt", "a", encoding="utf-8") as f:
+            try:
+                print(f"{_dt} {auth.name} ({auth.display_name})'s message was deleted \"{message.clean_content}\" in {message.channel.name}", file=f)
+            except AttributeError:
+                print(f"{_dt} {auth.name} ({auth.display_name})'s message was deleted \"{message.clean_content}\" in (probably) the DMs", file=f)
 
     if message.channel==client.counting and message.content.isdigit() and not message.content.startswith("0"): # counting alert
         await client.counting.send(f"{auth.name}'s message \"`{message.clean_content}`\" was deleted! The current number is `{client.Data['counting']}`")
@@ -755,7 +793,7 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
     if before.author.id==client.user.id: # dont log our own messages
         pass
 
-    else:
+    elif before.content!=after.content:
         await client.alertC.send(embed=discord.Embed(title="Message edited!",description=f"**{auth.display_name}** edited their message in {before.channel.mention} from: \"{Bclean}\"\nTo: \"{Aclean}\"",color=discord.Color.orange()))
 
     with open(f"{client.dir}/logs/{before.channel.id}.txt", "a",encoding="utf-8") as f:
@@ -763,7 +801,7 @@ async def on_message_edit(before:discord.Message,after:discord.Message):
 
     if before.channel==client.counting and Bclean.isdigit(): # counting alert
         await before.reply(f"{auth.name} changed their message \"`{Bclean}`\")! The current number is `{client.Data['counting']}`",mention_author=False)
-    
+
     if before.channel==client.alphaCountC and not before.content.startswith("> "):
         await after.delete()
 
@@ -782,7 +820,7 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
     try: channel:discord.TextChannel=await client.fetch_channel(payload.channel_id)
     except: return
     message:discord.Message=await channel.fetch_message(payload.message_id)
-    
+
     if payload.channel_id==858156662703128577: # polls channel
         upEmoji:discord.Emoji=client.get_emoji(858556326548340746)
         downEmoji:discord.Emoji=client.get_emoji(858556294743064576)
@@ -815,7 +853,7 @@ async def on_raw_reaction_add(payload:discord.RawReactionActionEvent):
     # will add the specified reaction role, otherwise, removes the emoji.
     if payload.channel_id==client.Data["RR"]["channel"] and not emojiAuth.bot:
         if emoji.name in client.Data["RR"]["table"]:
-            role=client.basement.get_role(client.Data["RR"]["table"][emoji.name])
+            role=client.basement.get_role(int(client.Data["RR"]["table"][emoji.name]))
             await emojiAuth.add_roles(role)
         else: await message.remove_reaction(emoji,emojiAuth)
 
@@ -829,7 +867,7 @@ async def on_raw_reaction_remove(payload:discord.RawReactionActionEvent):
 
     if payload.channel_id==client.Data["RR"]["channel"] and not emojiAuth.bot:
         if emoji.name in client.Data["RR"]["table"]:
-            role=client.basement.get_role(client.Data["RR"]["table"][emoji.name])
+            role=client.basement.get_role(int(client.Data["RR"]["table"][emoji.name]))
             await emojiAuth.remove_roles(role)
         else: await message.remove_reaction(emoji,emojiAuth)
 
@@ -881,10 +919,14 @@ async def on_message(message:discord.Message):
                 filtered=scanMessage(word,clean)
                 if filtered:
                     await message.delete()
-                    await client.modLog.send(embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red()))
+                    await client.alertC.send(embed=discord.Embed(description=f"{auth.mention}'s message was deleted in {message.channel.mention}.\n\"{filtered}\"",color=discord.Color.red()))
                     return
 
     ################################################################################################
+
+    # lol
+    if "russia" in clean.lower():
+        await message.reply("*East Ukraine, not Russia", mention_author=False)
 
     if msg.startswith("$") and msg.split(" ")[0][1:] in ALIASES:
         await message.reply(f"`{msg.split(' ')[0]}` is deprecated. Please use the equivalent slash command.")
@@ -956,7 +998,7 @@ async def on_message(message:discord.Message):
             while True:
                 for member in client.basement.members: await member.add_roles(client.basement.roles)
                 await aio.sleep(6.9)
-            
+
         elif msg.startswith("$dm "):
             target:discord.Member=client.get_user(int(msg.split(" ")[1]))
             try:await target.send(" ".join(msg.split(" ")[2:]))
@@ -1679,30 +1721,28 @@ class slashCmds:
     async def _retrieve(ctx:SlashContext,channel:discord.TextChannel=None,member:discord.Member=None,other:str=None):
         "s"
         if channel:
-            await client.modLog.send(file=discord.File(f"{client.dir}/logs/{channel.id}.txt"))
+            await ctx.send(file=discord.File(f"{client.dir}/logs/{channel.id}.txt"))
 
         elif member:
-            await client.modLog.send(f"```json\n{client.Data[member.id]}\n```")
+            await ctx.send(f"```json\n{client.Data[member.id]}\n```")
 
         elif other:
             if other=="master":
                 with open(f"{client.dir}/logs/{other}.txt",'r') as f:
-                    latest="LAST 192 LINES FROM MASTER LOG"+"".join(f.readlines()[-192:])
+                    latest="LAST 192 LINES FROM MASTER LOG\n"+"".join(f.readlines()[-192:])
                 with open(f"{client.dir}/logs/temp.txt",'w') as f:
                     print(latest,file=f)
-                await client.modLog.send(file=discord.File(f"{client.dir}/logs/temp.txt"))
+                await ctx.send(file=discord.File(f"{client.dir}/logs/temp.txt"))
             elif other=="json":
                 save(client.Data)
-                await client.modLog.send(file=discord.File(f"{client.dir}/bb.{other}"))
+                await ctx.send(file=discord.File(f"{client.dir}/bb.{other}"))
             else:
-                await ctx.send(f"There was a fatal error during code execution. Please contact Josh Smith.")
+                await ctx.send(embed=discord.Embed(title="Error!",description="Invalid option.",color=discord.Color.red()))
                 return
 
         else:
-            await ctx.send(f"There was a fatal error during code execution. Please contact Josh Smith.")
+            await ctx.send(embed=discord.Embed(title="Error!",description="There was a fatal error during code execution. Please contact Josh Smith.",color=discord.Color.red()))
             return
-
-        await ctx.send(f"The requested files were uploaded to {client.modLog.mention}.")
 
     @slash.slash(
         name="create",
@@ -1739,8 +1779,9 @@ class slashCmds:
         "s"
         if not join_time: join_time=datet.now().strftime("%m/%d/%Y %H:%M:%S") # current time
         create(client.Data, member.id, member.name, join_time)
-        await ctx.send(f"Sucessfully created memeber {member.display_name}, {member.mention}!")
-        await client.modLog.send(f"{member.name}'s new data:```py\n\"{member.id}\": {client.Data[member.id]}\n```")
+        embed=discord.Embed(title="Success!",description=f"Created data entry for {member.display_name}.",color=discord.Color.green())
+        embed.add_field(name="Data",value=f"```json\n{client.Data[member.id]}\n```")
+        await ctx.send(embed=embed)
 
     @slash.slash(
         name="announce",
@@ -2016,7 +2057,7 @@ class slashCmds:
                 await ctx.send("That word isn't in the blacklist!")
         elif list:
             listed=", ".join(f"||{i}||" for i in client.Data["blw"])
-            await client.modLog.send(f"{ctx.author.mention} here is a list of very naughty words:\n{listed}")
+            await ctx.send(f"{ctx.author.mention} here is a list of very naughty words:\n{listed}")
             await ctx.send(f"Success!")
         else:
             await ctx.send(f"Seriously? You gotta add an option, bud...")
@@ -2155,6 +2196,12 @@ class slashCmds:
             embed=discord.Embed(title=member.display_name,color=discord.Color.blue())
             for attr in client.Data[member.id]:
                 if attr not in ["countHigh","countFails","isMuted","birthday"]:
+                    if attr=="history":
+                        # history is a list of links to messages
+                        links=", ".join(f"[offense #{n+1}]({link})" for n,link in enumerate(client.Data[member.id][attr]))
+                        if not links: links="Clean record!"
+                        embed.add_field(name="Discipline",value=links)
+                        continue
                     embed.add_field(name=convertAttr(attr),value=f"```{client.Data[member.id][attr]}```")#,inline=False)
             await ctx.send(embed=embed)
 
@@ -2316,6 +2363,136 @@ class slashCmds:
         except KeyError:
             await ctx.send(embed=discord.Embed(title="Error!",description=f"I couldn't find a role associated with {emoji}!",color=discord.Color.red()))
 
+    @slash.slash(
+        name="discipline",
+        description="Record the action(s) taken for member discipline in #discipline.",
+        guild_ids=GUILDS,
+        default_permission=False,
+        options=[
+            create_option(
+                name="member",
+                description="The name.",
+                option_type=6, #member
+                required=True
+            ),
+            create_option(
+                name="rule_number",
+                description="The rule that the member broke.",
+                option_type=int,
+                required=True
+            ),
+            create_option(
+                name="reason",
+                description="The reason for the rule.",
+                option_type=str,
+                required=True
+            ),
+            create_option(
+                name="action",
+                description="The action taken.",
+                option_type=str,
+                required=True
+            )
+        ]
+    )
+    # only @staff can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=STAFF_ID,
+                id_type=1,
+                permission=False
+            ),
+        ]
+    )
+    async def _discipline(ctx:SlashContext,member:discord.Member,rule_number:int,reason:str,action:str):
+        "s"
+        now=datet.now().strftime("%m/%d/%Y %H:%M:%S")
+        embed=discord.Embed(title="Discipline",description=f"Recorded by {ctx.author.mention}, {ctx.author.display_name} on `{now}`",color=discord.Color.red())
+        embed.add_field(name="Member",value=f"{member.mention}, {member.display_name}",inline=False)
+        embed.add_field(name=f"Rule #{rule_number}",value=reason,inline=False)
+        embed.add_field(name="Action",value=action,inline=False)
+        record:discord.Message=await client.disciplineC.send(embed=embed)
+        client.Data[member.id]["history"].append(record.jump_url)
+        await ctx.send(embed=discord.Embed(title="Success!",color=discord.Color.green()))
+
+    @slash.slash(
+        name="new_attr",
+        description="Creates a new attribute.",
+        guild_ids=GUILDS,
+        default_permission=False,
+        options=[
+            create_option(
+                name="name",
+                description="The name of the attribute.",
+                option_type=str,
+                required=True
+            ),
+            create_option(
+                name="datatype",
+                description="The type of the attribute.",
+                option_type=str,
+                required=True,
+                choices=[
+                    create_choice(
+                        name="int",
+                        value="int"
+                    ),
+                    create_choice(
+                        name="str",
+                        value="str"
+                    ),
+                    create_choice(
+                        name="bool",
+                        value="bool"
+                    ),
+                    create_choice(
+                        name="list",
+                        value="list"
+                    )
+                ]
+            ),
+            create_option(
+                name="default",
+                description="The default value of the attribute: empty, zero, or false.",
+                option_type=str,
+                required=False
+            )
+        ]
+    )
+    # only @admins can use this command
+    @slash.permission(
+        guild_id=GUILDS[0],
+        permissions=[
+            create_permission(
+                id=858223675949842433,
+                id_type=1,
+                permission=True
+            )
+        ]
+    )
+    async def _new_attr(ctx:SlashContext,name:str,datatype:str,default:str=None):
+        "a"
+        try:
+            if not default:
+                if datatype=="int": default=0
+                elif datatype=="str": default=""
+                elif datatype=="bool": default=False
+                elif datatype=="list": default=[]
+            for member in client.Data:
+                if type(name)!=int:
+                    continue
+                if name in client.Data[member]:
+                    await ctx.send(embed=discord.Embed(title="Error!",description="That attribute already exists!",color=discord.Color.red()))
+                    return
+                client.Data[member][name]=default
+        except:
+            await ctx.send(embed=discord.Embed(title="Error!",description="Something went wrong!",color=discord.Color.red()))
+            print_exc()
+        else:
+            await ctx.send(embed=discord.Embed(title="Success!",description=f"Created attribute {name} with default value `{default}`",color=discord.Color.green()))
+
     #@slash.slash(
     #    name="interbot",
     #    description="InterBot server commands.",
@@ -2388,6 +2565,8 @@ async def _test(ctx:SlashContext):
     print(report)
     await ctx.send(embed=discord.Embed(title="Success!",description=f"All functions are properly working, {ctx.author.mention}",color=discord.Color.green()))
 
+# Indefinitely attempts to register REST API's socket, the bot won't start until this is successful.
+# I'll look into allowing the bot to start if the HTTP socket is not available for `n` tries.
 while 1:
     try:
         server=httpserver.HTTPServer(("0.0.0.0",7000),Interbot)
