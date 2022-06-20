@@ -10,8 +10,9 @@ Data=load()
 
 for member in Data:
     if type(Data[member])==dict and type(member)==int:
-        if "bithday" not in Data[member]:
-            Data[member]["birthday"]=""
+        if "history" not in Data[member]:
+            Data[member]["history"]=[]
+            print(f"made history attr for {Data[member]['name']}")
 
 def save(dictionary): # saves member data in dictionary to hard storage
     with open(f"bb.json", "w") as f: json.dump(dictionary, f)
