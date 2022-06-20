@@ -1,4 +1,4 @@
-# BasementBot
+# BasementBot v2
 
 Created by Josh Smith 07/12/2021.
 
